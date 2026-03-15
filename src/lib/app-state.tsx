@@ -6,20 +6,56 @@ import type {
   CanvasSnapshotEvent,
   ConfirmedExpression,
   OcrParseResult,
+  OcrRequestLifecycle,
   TutorActionRequest,
   TutorMessage,
+  TutorRequestLifecycle,
+  TutorRequestPayload,
+  TutorResponsePayload,
 } from '@/lib/contracts';
 
-interface AppState {
+export interface AppState {
   canvasSnapshotEvents: CanvasSnapshotEvent[];
   latestOcrParse: OcrParseResult | null;
   ocrStatus: AsyncStatus;
   ocrError?: string;
+  ocrActiveRequest?: OcrRequestLifecycle;
   confirmedExpression: ConfirmedExpression | null;
   tutorConversation: TutorMessage[];
   tutorActionRequests: TutorActionRequest[];
   tutorStatus: AsyncStatus;
   tutorError?: string;
+  tutorActiveRequest?: TutorRequestLifecycle;
+}
+
+type AppAction =
+  | { type: 'tutor/studentMessageAppended'; payload: TutorMessage }
+  | {
+      type: 'tutor/requestStarted';
+      payload: {
+        requestId: string;
+        actionType: TutorActionRequest['type'];
+        detail?: string;
+      };
+    }
+  | {
+      type: 'tutor/requestSucceeded';
+      payload: {
+        requestId?: string;
+        response: TutorResponsePayload;
+      };
+    }
+  | {
+      type: 'tutor/requestFailed';
+      payload: {
+        requestId?: string;
+        error: string;
+      };
+    };
+
+interface AppStateContextValue extends AppState {
+  dispatch: React.Dispatch<AppAction>;
+  invokeTutor: (payload: TutorRequestPayload) => Promise<TutorResponsePayload>;
 }
 
 type AppAction =
@@ -122,11 +158,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAppState() {
-  const state = useContext(AppStateContext);
-  if (!state) {
+  const context = useContext(AppStateContext);
+  if (!context) {
     throw new Error('useAppState must be used within an AppStateProvider');
   }
-  return state;
+  return context;
+}
+
+export function useAppStateActions() {
+  const context = useContext(AppStateContext);
+  if (!context) {
+    throw new Error('useAppStateActions must be used within an AppStateProvider');
+  }
+  return {
+    dispatch: context.dispatch,
+    invokeTutor: context.invokeTutor,
+  };
 }
 
 export function useAppDispatch() {

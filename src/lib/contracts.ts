@@ -67,3 +67,12 @@ export interface TutorResponsePayload {
   message: TutorMessage;
   actionRequest?: TutorActionRequest;
 }
+
+export interface OcrRequestLifecycle {
+  requestId: string;
+  snapshotId: string;
+}
+
+export interface TutorRequestLifecycle {
+  requestId: string;
+}
