@@ -71,9 +71,9 @@ function validateOcrRequest(body: unknown): {
     valid: true,
     errors: [],
     payload: {
-      snapshotId,
-      strokeCount,
-      inkModel,
+      snapshotId: snapshotId as string,
+      strokeCount: strokeCount as number,
+      inkModel: inkModel as string,
     },
   };
 }

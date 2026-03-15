@@ -9,6 +9,7 @@ import type {
   OcrRequestLifecycle,
   TutorActionRequest,
   TutorMessage,
+  TutorRequestLifecycle,
   TutorRequestPayload,
   TutorResponsePayload,
 } from '@/lib/contracts';
@@ -191,7 +192,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'tutor/requestSucceeded': {
       const updatedRequests = action.payload.requestId
         ? state.tutorActionRequests.map((request) =>
-            request.id === action.payload.requestId ? { ...request, status: 'completed' } : request,
+            request.id === action.payload.requestId ? ({ ...request, status: 'completed' } as TutorActionRequest) : request,
           )
         : state.tutorActionRequests;
 
@@ -206,7 +207,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'tutor/requestFailed': {
       const updatedRequests = action.payload.requestId
         ? state.tutorActionRequests.map((request) =>
-            request.id === action.payload.requestId ? { ...request, status: 'rejected' } : request,
+            request.id === action.payload.requestId ? ({ ...request, status: 'rejected' } as TutorActionRequest) : request,
           )
         : state.tutorActionRequests;
 
@@ -244,7 +245,7 @@ export function useAppState() {
   if (!context) {
     throw new Error('useAppState must be used within an AppStateProvider');
   }
-  return context.state;
+  return context;
 }
 
 export function useAppStateActions() {
@@ -252,5 +253,8 @@ export function useAppStateActions() {
   if (!context) {
     throw new Error('useAppStateActions must be used within an AppStateProvider');
   }
-  return context.actions;
+  return {
+    dispatch: context.dispatch,
+    invokeTutor: context.invokeTutor,
+  };
 }

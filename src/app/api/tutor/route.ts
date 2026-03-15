@@ -124,9 +124,9 @@ function validateTutorRequest(body: unknown): {
     valid: true,
     errors: [],
     payload: {
-      confirmedExpressionLatex: body.confirmedExpressionLatex,
+      confirmedExpressionLatex: body.confirmedExpressionLatex as string,
       conversation: body.conversation as TutorMessage[],
-      requestedAction: body.requestedAction,
+      requestedAction: body.requestedAction as TutorActionRequest['type'] | undefined,
     },
   };
 }
