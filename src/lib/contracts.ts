@@ -26,6 +26,13 @@ export interface OcrRequestPayload {
   snapshotId: string;
   strokeCount: number;
   inkModel: string;
+  canvasSize: {
+    width: number;
+    height: number;
+  };
+  sessionId: string;
+  latestStrokeAt: number | null;
+  trigger: 'stroke-complete' | 'inactivity';
 }
 
 export interface OcrResponsePayload {
