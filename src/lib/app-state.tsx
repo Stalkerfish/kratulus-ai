@@ -169,7 +169,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
     case 'tutor/requestSucceeded': {
       const updatedRequests = action.payload.requestId
-        ? state.tutorActionRequests.map((request) =>
+        ? state.tutorActionRequests.map((request): TutorActionRequest =>
             request.id === action.payload.requestId ? { ...request, status: 'completed' } : request,
           )
         : state.tutorActionRequests;
@@ -184,7 +184,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
     case 'tutor/requestFailed': {
       const updatedRequests = action.payload.requestId
-        ? state.tutorActionRequests.map((request) =>
+        ? state.tutorActionRequests.map((request): TutorActionRequest =>
             request.id === action.payload.requestId ? { ...request, status: 'rejected' } : request,
           )
         : state.tutorActionRequests;
@@ -226,12 +226,4 @@ export function useAppState() {
     throw new Error('useAppState must be used within an AppStateProvider');
   }
   return context;
-}
-
-export function useAppDispatch() {
-  const dispatch = useContext(AppDispatchContext);
-  if (!dispatch) {
-    throw new Error('useAppDispatch must be used within an AppStateProvider');
-  }
-  return dispatch;
 }
