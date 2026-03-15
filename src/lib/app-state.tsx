@@ -6,22 +6,25 @@ import type {
   CanvasSnapshotEvent,
   ConfirmedExpression,
   OcrParseResult,
+  OcrRequestLifecycle,
   TutorActionRequest,
   TutorMessage,
   TutorRequestPayload,
   TutorResponsePayload,
 } from '@/lib/contracts';
 
-interface AppState {
+export interface AppState {
   canvasSnapshotEvents: CanvasSnapshotEvent[];
   latestOcrParse: OcrParseResult | null;
   ocrStatus: AsyncStatus;
   ocrError?: string;
+  ocrActiveRequest?: OcrRequestLifecycle;
   confirmedExpression: ConfirmedExpression | null;
   tutorConversation: TutorMessage[];
   tutorActionRequests: TutorActionRequest[];
   tutorStatus: AsyncStatus;
   tutorError?: string;
+  tutorActiveRequest?: TutorRequestLifecycle;
 }
 
 type AppAction =
@@ -86,6 +89,7 @@ const initialState: AppState = {
     updatedAt: '14:02:18',
   },
   ocrStatus: 'success',
+  ocrActiveRequest: { requestId: 'ocr_req_001', snapshotId: 'snap_003' },
   confirmedExpression: {
     latex: "f'(x) = 2x\\cos(x^2) + 3",
     confirmedAt: '14:02:22',
@@ -236,9 +240,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAppState() {
-  const state = useContext(AppStateContext);
-  if (!state) {
+  const context = useContext(AppStateContext);
+  if (!context) {
     throw new Error('useAppState must be used within an AppStateProvider');
   }
-  return state;
+  return context.state;
+}
+
+export function useAppStateActions() {
+  const context = useContext(AppStateContext);
+  if (!context) {
+    throw new Error('useAppStateActions must be used within an AppStateProvider');
+  }
+  return context.actions;
 }
