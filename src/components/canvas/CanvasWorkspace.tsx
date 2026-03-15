@@ -27,15 +27,24 @@ export interface StrokeEvent {
 }
 
 const AVAILABLE_COLORS = ['#0f172a', '#f59e0b', '#6d28d9'];
+const REPLAY_SPEED_STORAGE_KEY = 'kratulus.replaySpeed';
 
 interface CanvasWorkspaceProps {
   initialSession?: StoredSession | null;
 }
 
 export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps) {
-  const dispatch = useAppDispatch();
-  const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError, tutorActionRequests, tutorConversation } =
-    useAppState();
+  const {
+    canvasSnapshotEvents,
+    confirmedExpression,
+    latestOcrParse,
+    ocrStatus,
+    ocrError,
+    tutorActionRequests,
+    tutorConversation,
+    dispatch,
+    invokeTutor,
+  } = useAppState();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -47,7 +56,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
   const [recordTimeline, setRecordTimeline] = useState<StrokeEvent[]>(initialSession?.strokeTimeline ?? []);
   const [isRecording, setIsRecording] = useState(false);
   const [isReplayActive, setIsReplayActive] = useState(false);
-  const [replaySpeed, setReplaySpeed] = useState(1);
+  const [replaySpeed, setReplaySpeed] = useState(initialSession?.replaySpeed ?? 1);
   const [replayProgress, setReplayProgress] = useState(0);
 
   const activeStrokeIdRef = useRef<string | null>(null);
@@ -74,7 +83,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
       dispatch({ type: 'tutor/requestStarted', payload: { requestId, actionType: type, detail } });
 
       try {
-        const response = await requestTutorResponse({
+        const response = await invokeTutor({
           confirmedExpressionLatex: sessionExpression.latex,
           conversation: tutorConversation,
           requestedAction: type,
@@ -91,7 +100,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
         });
       }
     },
-    [dispatch, sessionExpression, tutorConversation],
+    [dispatch, invokeTutor, sessionExpression, tutorConversation],
   );
 
   useEffect(() => {
@@ -104,75 +113,17 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
     setRecordTimeline(initialSession.strokeTimeline);
   }, [initialSession]);
 
-  const runOcrCycle = useCallback(
-    async (payload: OcrRequestPayload) => {
-      const snapshotEvent: CanvasSnapshotEvent = {
-        id: payload.snapshotId,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour12: false,
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }),
-        label: payload.trigger === 'stroke-complete' ? 'Stroke completed, OCR queued' : 'Inactivity window elapsed',
-        strokeCount: payload.strokeCount,
-        status: 'processing',
-      };
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
 
-      dispatch({ type: 'ocr/cycleStarted', payload: { snapshot: snapshotEvent } });
+    const savedSpeed = Number(window.localStorage.getItem(REPLAY_SPEED_STORAGE_KEY));
+    const nextSpeed = Number.isFinite(savedSpeed) && savedSpeed > 0 ? savedSpeed : initialSession?.replaySpeed ?? 1;
 
-      try {
-        const parse = await requestOcrParse(payload);
-        dispatch({ type: 'ocr/cycleSucceeded', payload: { parse } });
-      } catch (error) {
-        dispatch({
-          type: 'ocr/cycleFailed',
-          payload: { error: error instanceof Error ? error.message : 'OCR parse failed' },
-        });
-      }
-    },
-    [dispatch],
-  );
-
-  const scheduleSnapshot = useCallback(
-    (reason: OcrRequestPayload['trigger'], debounceMs: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas) {
-        return;
-      }
-
-      if (snapshotTimerRef.current) {
-        window.clearTimeout(snapshotTimerRef.current);
-      }
-
-      snapshotTimerRef.current = window.setTimeout(() => {
-        const completedStrokes = strokes.filter((stroke) => stroke.endedAt);
-        const latestUpdatedAt = completedStrokes.reduce((latest, stroke) => Math.max(latest, stroke.updatedAt), 0);
-
-        if (
-          completedStrokes.length === lastScheduledStrokeCountRef.current &&
-          latestUpdatedAt === lastScheduledUpdatedAtRef.current
-        ) {
-          return;
-        }
-
-        lastScheduledStrokeCountRef.current = completedStrokes.length;
-        lastScheduledUpdatedAtRef.current = latestUpdatedAt;
-
-        const snapshotId = `snap_${Date.now()}`;
-        runOcrCycle({
-          snapshotId,
-          strokeCount: completedStrokes.length,
-          inkModel: activeTool,
-          canvasSize: { width: canvas.clientWidth, height: canvas.clientHeight },
-          latestStrokeAt: latestUpdatedAt || null,
-          sessionId: initialSession?.id ?? 'latest',
-          trigger: reason,
-        });
-      }, debounceMs);
-    },
-    [activeTool, initialSession?.id, runOcrCycle, strokes],
-  );
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setReplaySpeed((current) => (current === nextSpeed ? current : nextSpeed));
+  }, [initialSession?.replaySpeed]);
 
   const redrawStrokes = useCallback((ctx: CanvasRenderingContext2D, allStrokes: StrokeEvent[]) => {
     const canvas = canvasRef.current;
@@ -365,7 +316,15 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
       canvas.removeEventListener('pointerleave', handlePointerUp);
       canvas.removeEventListener('pointercancel', handlePointerCancel);
     };
-  }, [activeColor, activeTool, isRecording, isReplayActive, redrawStrokes, scheduleSnapshot]);
+  }, [activeColor, activeTool, isRecording, isReplayActive, redrawStrokes]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(REPLAY_SPEED_STORAGE_KEY, String(replaySpeed));
+  }, [replaySpeed]);
 
   useEffect(
     () => () => {
@@ -440,10 +399,11 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
       strokeTimeline: recordTimeline,
       confirmedExpression: sourceExpression,
       tutorActionHistory: sourceActions,
+      replaySpeed,
     };
 
     saveLatestSession(session);
-  }, [confirmedExpression, initialSession, isRecording, recordTimeline, tutorActionRequests]);
+  }, [confirmedExpression, initialSession, isRecording, recordTimeline, replaySpeed, tutorActionRequests]);
 
   return (
     <div className="flex flex-col gap-4 h-full">

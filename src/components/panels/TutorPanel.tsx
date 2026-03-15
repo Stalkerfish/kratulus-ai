@@ -5,7 +5,7 @@ import { useAppDispatch, useAppState } from '@/lib/app-state';
 import { requestTutorResponse } from '@/lib/tutorClient';
 
 export default function TutorPanel() {
-  const { tutorConversation, tutorActionRequests, tutorStatus, tutorError, confirmedExpression } = useAppState();
+  const { tutorConversation, tutorActionRequests, tutorStatus, tutorError, confirmedExpression, dispatch, invokeTutor } = useAppState();
   const dispatch = useAppDispatch();
   const [input, setInput] = useState('');
 
@@ -48,7 +48,7 @@ export default function TutorPanel() {
     setInput('');
 
     try {
-      const response = await requestTutorResponse({
+      const response = await invokeTutor({
         confirmedExpressionLatex: confirmedExpression.latex,
         conversation: [...tutorConversation, studentMessage],
       });

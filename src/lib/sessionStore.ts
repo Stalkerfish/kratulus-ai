@@ -8,6 +8,7 @@ export interface StoredSession {
   strokeTimeline: StrokeEvent[];
   confirmedExpression: ConfirmedExpression | null;
   tutorActionHistory: TutorActionRequest[];
+  replaySpeed?: number;
 }
 
 const STORAGE_KEY = 'kratulus.latestSession';
