@@ -9,7 +9,8 @@ import type {
   OcrRequestLifecycle,
   TutorActionRequest,
   TutorMessage,
-  TutorRequestLifecycle,
+  TutorRequestPayload,
+  TutorResponsePayload,
 } from '@/lib/contracts';
 
 export interface AppState {
@@ -26,21 +27,37 @@ export interface AppState {
   tutorActiveRequest?: TutorRequestLifecycle;
 }
 
-export type AppStateAction =
-  | { type: 'canvas/snapshotCreated'; payload: CanvasSnapshotEvent }
-  | { type: 'ocr/requestStarted'; payload: OcrRequestLifecycle }
-  | { type: 'ocr/requestSucceeded'; payload: { requestId: string; parse: OcrParseResult } }
-  | { type: 'ocr/requestFailed'; payload: { requestId: string; error: string } }
-  | { type: 'ocr/confirmedExpressionSet'; payload: ConfirmedExpression | null }
-  | { type: 'tutor/requestStarted'; payload: { requestId: string; actionRequest: TutorActionRequest } }
+type AppAction =
+  | { type: 'tutor/studentMessageAppended'; payload: TutorMessage }
+  | {
+      type: 'tutor/requestStarted';
+      payload: {
+        requestId: string;
+        actionType: TutorActionRequest['type'];
+        detail?: string;
+      };
+    }
   | {
       type: 'tutor/requestSucceeded';
-      payload: { requestId: string; message: TutorMessage; actionRequest?: TutorActionRequest };
+      payload: {
+        requestId?: string;
+        response: TutorResponsePayload;
+      };
     }
-  | { type: 'tutor/requestFailed'; payload: { requestId: string; error: string } }
-  | { type: 'tutor/messageAppended'; payload: TutorMessage };
+  | {
+      type: 'tutor/requestFailed';
+      payload: {
+        requestId?: string;
+        error: string;
+      };
+    };
 
-const seededInitialState: AppState = {
+interface AppStateContextValue extends AppState {
+  dispatch: React.Dispatch<AppAction>;
+  invokeTutor: (payload: TutorRequestPayload) => Promise<TutorResponsePayload>;
+}
+
+const initialState: AppState = {
   canvasSnapshotEvents: [
     {
       id: 'snap_001',
@@ -101,172 +118,123 @@ const seededInitialState: AppState = {
       requestedAt: '14:02:28',
       detail: 'Show guidance for derivative evaluation at a point.',
     },
-    {
-      id: 'act_002',
-      type: 'evaluate_point',
-      status: 'running',
-      requestedAt: '14:02:34',
-      detail: "Compute f'(√π).",
-    },
   ],
-  tutorStatus: 'loading',
-  tutorActiveRequest: { requestId: 'act_002' },
+  tutorStatus: 'idle',
 };
 
-export function createInitialAppState(): AppState {
-  return structuredClone(seededInitialState);
+function nowTimeLabel() {
+  return new Date().toLocaleTimeString([], { hour12: false });
 }
 
-export function appStateReducer(state: AppState, action: AppStateAction): AppState {
+function tutorActionCopy(type: TutorActionRequest['type']) {
+  switch (type) {
+    case 'step_hint':
+      return 'Break the expression into nested functions and differentiate from the outside in.';
+    case 'identify_error':
+      return 'Common error: forgetting to multiply by the derivative of the inner function.';
+    case 'synthesize_proof':
+      return 'A concise proof can proceed by defining helper substitutions and applying known differentiation rules.';
+    case 'evaluate_point':
+      return 'Substitute the target x-value after simplification to reduce arithmetic mistakes.';
+    default:
+      return 'I can help with the next step.';
+  }
+}
+
+async function invokeTutorClient(payload: TutorRequestPayload): Promise<TutorResponsePayload> {
+  await new Promise((resolve) => window.setTimeout(resolve, 300));
+
+  if (!payload.confirmedExpressionLatex) {
+    throw new Error('Missing confirmed expression.');
+  }
+
+  const content = payload.requestedAction
+    ? tutorActionCopy(payload.requestedAction)
+    : `Given ${payload.confirmedExpressionLatex}, focus on ${
+        payload.conversation[payload.conversation.length - 1]?.content ?? 'the next simplification step'
+      }.`;
+
+  return {
+    message: {
+      id: `msg_${crypto.randomUUID()}`,
+      role: 'tutor',
+      content,
+      createdAt: nowTimeLabel(),
+    },
+  };
+}
+
+function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
-    case 'canvas/snapshotCreated':
+    case 'tutor/studentMessageAppended': {
       return {
         ...state,
-        canvasSnapshotEvents: [...state.canvasSnapshotEvents, action.payload],
+        tutorConversation: [...state.tutorConversation, action.payload],
       };
-    case 'ocr/requestStarted':
-      return {
-        ...state,
-        ocrStatus: 'loading',
-        ocrError: undefined,
-        ocrActiveRequest: action.payload,
-      };
-    case 'ocr/requestSucceeded':
-      if (state.ocrActiveRequest?.requestId && state.ocrActiveRequest.requestId !== action.payload.requestId) {
-        return state;
-      }
-
-      return {
-        ...state,
-        ocrStatus: 'success',
-        ocrError: undefined,
-        latestOcrParse: action.payload.parse,
-        ocrActiveRequest: undefined,
-      };
-    case 'ocr/requestFailed':
-      if (state.ocrActiveRequest?.requestId && state.ocrActiveRequest.requestId !== action.payload.requestId) {
-        return state;
-      }
-
-      return {
-        ...state,
-        ocrStatus: 'error',
-        ocrError: action.payload.error,
-        ocrActiveRequest: undefined,
-      };
-    case 'ocr/confirmedExpressionSet':
-      return {
-        ...state,
-        confirmedExpression: action.payload,
-      };
+    }
     case 'tutor/requestStarted': {
-      const existingRequestIndex = state.tutorActionRequests.findIndex(
-        (request) => request.id === action.payload.actionRequest.id,
-      );
-      const runningActionRequest = { ...action.payload.actionRequest, status: 'running' as const };
+      const nextRequest: TutorActionRequest = {
+        id: action.payload.requestId,
+        type: action.payload.actionType,
+        status: 'running',
+        requestedAt: nowTimeLabel(),
+        detail: action.payload.detail,
+      };
 
       return {
         ...state,
         tutorStatus: 'loading',
         tutorError: undefined,
-        tutorActiveRequest: { requestId: action.payload.requestId },
-        tutorActionRequests:
-          existingRequestIndex === -1
-            ? [...state.tutorActionRequests, runningActionRequest]
-            : state.tutorActionRequests.map((request, index) =>
-                index === existingRequestIndex ? runningActionRequest : request,
-              ),
+        tutorActionRequests: [...state.tutorActionRequests, nextRequest],
       };
     }
     case 'tutor/requestSucceeded': {
-      if (state.tutorActiveRequest?.requestId && state.tutorActiveRequest.requestId !== action.payload.requestId) {
-        return state;
-      }
-
-      const nextActionRequests = state.tutorActionRequests.map((request) =>
-        request.id === action.payload.requestId ? { ...request, status: 'completed' as const } : request,
-      );
+      const updatedRequests = action.payload.requestId
+        ? state.tutorActionRequests.map((request) =>
+            request.id === action.payload.requestId ? { ...request, status: 'completed' } : request,
+          )
+        : state.tutorActionRequests;
 
       return {
         ...state,
         tutorStatus: 'success',
         tutorError: undefined,
-        tutorConversation: [...state.tutorConversation, action.payload.message],
-        tutorActionRequests: action.payload.actionRequest
-          ? [...nextActionRequests, action.payload.actionRequest]
-          : nextActionRequests,
-        tutorActiveRequest: undefined,
+        tutorActionRequests: updatedRequests,
+        tutorConversation: [...state.tutorConversation, action.payload.response.message],
       };
     }
-    case 'tutor/requestFailed':
-      if (state.tutorActiveRequest?.requestId && state.tutorActiveRequest.requestId !== action.payload.requestId) {
-        return state;
-      }
+    case 'tutor/requestFailed': {
+      const updatedRequests = action.payload.requestId
+        ? state.tutorActionRequests.map((request) =>
+            request.id === action.payload.requestId ? { ...request, status: 'rejected' } : request,
+          )
+        : state.tutorActionRequests;
 
       return {
         ...state,
         tutorStatus: 'error',
         tutorError: action.payload.error,
-        tutorActionRequests: state.tutorActionRequests.map((request) =>
-          request.id === action.payload.requestId ? { ...request, status: 'rejected' as const } : request,
-        ),
-        tutorActiveRequest: undefined,
+        tutorActionRequests: updatedRequests,
       };
-    case 'tutor/messageAppended':
-      return {
-        ...state,
-        tutorConversation: [...state.tutorConversation, action.payload],
-      };
+    }
     default:
       return state;
   }
 }
 
-export interface AppStateDispatchHelpers {
-  dispatch: React.Dispatch<AppStateAction>;
-  createCanvasSnapshot: (snapshot: CanvasSnapshotEvent) => void;
-  startOcrRequest: (request: OcrRequestLifecycle) => void;
-  completeOcrRequest: (payload: { requestId: string; parse: OcrParseResult }) => void;
-  failOcrRequest: (payload: { requestId: string; error: string }) => void;
-  setConfirmedExpression: (expression: ConfirmedExpression | null) => void;
-  startTutorRequest: (payload: { requestId: string; actionRequest: TutorActionRequest }) => void;
-  completeTutorRequest: (payload: {
-    requestId: string;
-    message: TutorMessage;
-    actionRequest?: TutorActionRequest;
-  }) => void;
-  failTutorRequest: (payload: { requestId: string; error: string }) => void;
-  appendTutorMessage: (message: TutorMessage) => void;
-}
-
-interface AppStateContextValue {
-  state: AppState;
-  actions: AppStateDispatchHelpers;
-}
-
 const AppStateContext = createContext<AppStateContextValue | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appStateReducer, undefined, createInitialAppState);
+  const [state, dispatch] = useReducer(appReducer, initialState);
 
-  const actions = useMemo<AppStateDispatchHelpers>(
+  const value = useMemo<AppStateContextValue>(
     () => ({
+      ...state,
       dispatch,
-      createCanvasSnapshot: (snapshot) => dispatch({ type: 'canvas/snapshotCreated', payload: snapshot }),
-      startOcrRequest: (request) => dispatch({ type: 'ocr/requestStarted', payload: request }),
-      completeOcrRequest: (payload) => dispatch({ type: 'ocr/requestSucceeded', payload }),
-      failOcrRequest: (payload) => dispatch({ type: 'ocr/requestFailed', payload }),
-      setConfirmedExpression: (expression) =>
-        dispatch({ type: 'ocr/confirmedExpressionSet', payload: expression }),
-      startTutorRequest: (payload) => dispatch({ type: 'tutor/requestStarted', payload }),
-      completeTutorRequest: (payload) => dispatch({ type: 'tutor/requestSucceeded', payload }),
-      failTutorRequest: (payload) => dispatch({ type: 'tutor/requestFailed', payload }),
-      appendTutorMessage: (message) => dispatch({ type: 'tutor/messageAppended', payload: message }),
+      invokeTutor: invokeTutorClient,
     }),
-    [dispatch],
+    [state],
   );
-
-  const value = useMemo(() => ({ state, actions }), [actions, state]);
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }
