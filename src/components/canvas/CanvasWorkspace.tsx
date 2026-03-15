@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppState } from '@/lib/app-state';
 import { type StoredSession, saveLatestSession } from '@/lib/sessionStore';
 
@@ -24,14 +24,24 @@ export interface StrokeEvent {
 }
 
 const AVAILABLE_COLORS = ['#0f172a', '#f59e0b', '#6d28d9'];
+const REPLAY_SPEED_STORAGE_KEY = 'kratulus.replaySpeed';
 
 interface CanvasWorkspaceProps {
   initialSession?: StoredSession | null;
 }
 
 export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps) {
-  const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError, tutorActionRequests } =
-    useAppState();
+  const {
+    canvasSnapshotEvents,
+    confirmedExpression,
+    latestOcrParse,
+    ocrStatus,
+    ocrError,
+    tutorActionRequests,
+    tutorConversation,
+    dispatch,
+    invokeTutor,
+  } = useAppState();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -43,7 +53,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
   const [recordTimeline, setRecordTimeline] = useState<StrokeEvent[]>(initialSession?.strokeTimeline ?? []);
   const [isRecording, setIsRecording] = useState(false);
   const [isReplayActive, setIsReplayActive] = useState(false);
-  const [replaySpeed, setReplaySpeed] = useState(1);
+  const [replaySpeed, setReplaySpeed] = useState(initialSession?.replaySpeed ?? 1);
   const [replayProgress, setReplayProgress] = useState(0);
 
   const activeStrokeIdRef = useRef<string | null>(null);
@@ -51,14 +61,63 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
   const latestSnapshot = canvasSnapshotEvents[canvasSnapshotEvents.length - 1];
   const sessionExpression = confirmedExpression ?? initialSession?.confirmedExpression ?? null;
 
+  const appendTutorFeedback = useCallback(
+    async (type: 'step_hint' | 'identify_error' | 'synthesize_proof' | 'evaluate_point', detail: string) => {
+      if (!sessionExpression?.latex) {
+        dispatch({
+          type: 'tutor/requestFailed',
+          payload: {
+            error: 'Confirm an expression before requesting tutor guidance.',
+          },
+        });
+        return;
+      }
+
+      const requestId = `act_${crypto.randomUUID()}`;
+      dispatch({ type: 'tutor/requestStarted', payload: { requestId, actionType: type, detail } });
+
+      try {
+        const response = await invokeTutor({
+          confirmedExpressionLatex: sessionExpression.latex,
+          conversation: tutorConversation,
+          requestedAction: type,
+        });
+
+        dispatch({ type: 'tutor/requestSucceeded', payload: { requestId, response } });
+      } catch (error) {
+        dispatch({
+          type: 'tutor/requestFailed',
+          payload: {
+            requestId,
+            error: error instanceof Error ? error.message : 'Tutor request failed.',
+          },
+        });
+      }
+    },
+    [dispatch, invokeTutor, sessionExpression, tutorConversation],
+  );
+
   useEffect(() => {
     if (!initialSession) {
       return;
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStrokes(initialSession.strokeTimeline);
     setRecordTimeline(initialSession.strokeTimeline);
   }, [initialSession]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const savedSpeed = Number(window.localStorage.getItem(REPLAY_SPEED_STORAGE_KEY));
+    const nextSpeed = Number.isFinite(savedSpeed) && savedSpeed > 0 ? savedSpeed : initialSession?.replaySpeed ?? 1;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setReplaySpeed((current) => (current === nextSpeed ? current : nextSpeed));
+  }, [initialSession?.replaySpeed]);
 
   const redrawStrokes = useCallback((ctx: CanvasRenderingContext2D, allStrokes: StrokeEvent[]) => {
     const canvas = canvasRef.current;
@@ -250,20 +309,12 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
   }, [activeColor, activeTool, isRecording, isReplayActive, redrawStrokes]);
 
   useEffect(() => {
-    const sourceExpression = confirmedExpression ?? initialSession?.confirmedExpression ?? null;
-    const sourceActions = tutorActionRequests.length > 0 ? tutorActionRequests : initialSession?.tutorActionHistory ?? [];
+    if (typeof window === 'undefined') {
+      return;
+    }
 
-    const session: StoredSession = {
-      id: initialSession?.id ?? 'latest',
-      createdAt: initialSession?.createdAt ?? Date.now(),
-      updatedAt: Date.now(),
-      strokeTimeline: recordTimeline,
-      confirmedExpression: sourceExpression,
-      tutorActionHistory: sourceActions,
-    };
-
-    saveLatestSession(session);
-  }, [confirmedExpression, initialSession, recordTimeline, tutorActionRequests]);
+    window.localStorage.setItem(REPLAY_SPEED_STORAGE_KEY, String(replaySpeed));
+  }, [replaySpeed]);
 
   useEffect(
     () => () => {
@@ -316,6 +367,30 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
 
     runStep(0);
   }, [recordTimeline, redrawStrokes, replaySpeed, stopReplay]);
+
+  const toggleRecording = useCallback(() => {
+    if (!isRecording) {
+      setRecordTimeline([]);
+      setIsRecording(true);
+      return;
+    }
+
+    setIsRecording(false);
+    const sourceExpression = confirmedExpression ?? initialSession?.confirmedExpression ?? null;
+    const sourceActions = tutorActionRequests.length > 0 ? tutorActionRequests : initialSession?.tutorActionHistory ?? [];
+
+    const session: StoredSession = {
+      id: initialSession?.id ?? 'latest',
+      createdAt: initialSession?.createdAt ?? Date.now(),
+      updatedAt: Date.now(),
+      strokeTimeline: recordTimeline,
+      confirmedExpression: sourceExpression,
+      tutorActionHistory: sourceActions,
+      replaySpeed,
+    };
+
+    saveLatestSession(session);
+  }, [confirmedExpression, initialSession, isRecording, recordTimeline, replaySpeed, tutorActionRequests]);
 
   return (
     <div className="flex flex-col gap-4 h-full">
@@ -376,10 +451,11 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
         <div className="absolute top-4 right-6 flex items-center gap-2 z-10">
           <button
             type="button"
+            onClick={toggleRecording}
             className="px-3 py-1.5 bg-slate-100 dark:bg-primary/10 border border-slate-200 dark:border-primary/30 rounded-lg text-[10px] font-mono font-bold flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
-            <span className="w-2 h-2 rounded-full bg-red-500" />
-            <span>RECORD SESSION</span>
+            <span className={`w-2 h-2 rounded-full ${isRecording ? 'bg-red-500' : 'bg-slate-400'}`} />
+            <span>{isRecording ? 'STOP RECORDING' : 'RECORD SESSION'}</span>
           </button>
         </div>
 
@@ -411,18 +487,21 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
         <div className="flex gap-2">
           <button
             type="button"
+            onClick={() => appendTutorFeedback('step_hint', 'Requesting step-by-step hint from workspace controls.')}
             className="px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-sm font-bold hover:bg-primary/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
             Step-by-Step Hint
           </button>
           <button
             type="button"
+            onClick={() => appendTutorFeedback('identify_error', 'Requesting error analysis for current work.')}
             className="px-4 py-2 bg-secondary/10 text-secondary border border-secondary/20 rounded-lg text-sm font-bold hover:bg-secondary/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
             Identify Error
           </button>
           <button
             type="button"
+            onClick={() => appendTutorFeedback('synthesize_proof', 'Requesting proof synthesis from current expression.')}
             className="px-4 py-2 bg-slate-100 dark:bg-primary/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-primary/20 rounded-lg text-sm font-bold hover:bg-slate-200 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
             Synthesize Proof
@@ -431,6 +510,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
         <div className="flex gap-2">
           <button
             type="button"
+            onClick={() => appendTutorFeedback('evaluate_point', 'Convert expression to a tutor evaluation aid.')}
             className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-sm font-bold flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
             <span className="material-symbols-outlined text-sm">function</span>
