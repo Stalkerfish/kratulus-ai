@@ -1,6 +1,11 @@
+'use client';
+
 import React from 'react';
+import { useAppState } from '@/lib/app-state';
 
 export default function TutorPanel() {
+  const { tutorConversation, tutorActionRequests, tutorStatus, tutorError } = useAppState();
+
   return (
     <div className="bg-white dark:bg-background-dark border border-primary/30 rounded-xl p-5 flex-grow flex flex-col relative overflow-hidden blueprint-grid">
       <div className="absolute top-0 right-0 p-2">
@@ -13,37 +18,43 @@ export default function TutorPanel() {
           </div>
           <div>
             <h4 className="font-bold text-slate-900 dark:text-white leading-none">The Analyst</h4>
-            <span className="text-[10px] font-mono text-primary uppercase leading-none">Active Analysis</span>
+            <span className="text-[10px] font-mono text-primary uppercase leading-none">{`Tutor ${tutorStatus}`}</span>
           </div>
         </div>
-        <div className="space-y-4 flex-grow">
-          <div className="bg-slate-50 dark:bg-primary/5 border border-slate-200 dark:border-primary/20 p-3 rounded-lg">
-            <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Step-by-Step Guidance:</p>
-            <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed italic">
-              {"\"Correct application of the Chain Rule. You correctly identified $u = x^2$ and $du/dx = 2x$. Now, try evaluating the derivative at $x = \\sqrt{\\pi}$ to find the slope of the tangent line.\""}
-            </p>
-          </div>
+
+        <div className="space-y-4 flex-grow overflow-y-auto pr-1">
+          {tutorStatus === 'loading' && (
+            <div className="text-xs font-mono uppercase text-primary/70">Generating tutor response...</div>
+          )}
+          {tutorStatus === 'error' && <div className="text-xs text-red-500">{tutorError ?? 'Tutor unavailable.'}</div>}
+
+          {tutorConversation.map((message) => (
+            <div className="bg-slate-50 dark:bg-primary/5 border border-slate-200 dark:border-primary/20 p-3 rounded-lg" key={message.id}>
+              <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 uppercase">{message.role}</p>
+              <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed italic">{message.content}</p>
+              <p className="text-[10px] mt-2 font-mono text-slate-400">{message.createdAt}</p>
+            </div>
+          ))}
+
           <div className="border-l-2 border-secondary/50 pl-4 py-1">
-            <p className="text-[10px] font-mono text-secondary uppercase font-bold tracking-tighter">Next Recommended Step</p>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Practice Second Derivatives: $f''(x)$</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-4">
-            <div className="bg-slate-100 dark:bg-primary/10 p-2 rounded border border-slate-200 dark:border-primary/10 text-center">
-              <span className="text-[10px] text-slate-500 block uppercase tracking-tighter">Accuracy</span>
-              <span className="text-lg font-bold text-primary font-mono">98.2%</span>
-            </div>
-            <div className="bg-slate-100 dark:bg-primary/10 p-2 rounded border border-slate-200 dark:border-primary/10 text-center">
-              <span className="text-[10px] text-slate-500 block uppercase tracking-tighter">Focus Rate</span>
-              <span className="text-lg font-bold text-secondary font-mono">High</span>
+            <p className="text-[10px] font-mono text-secondary uppercase font-bold tracking-tighter">Action Requests</p>
+            <div className="mt-2 space-y-2">
+              {tutorActionRequests.map((request) => (
+                <div className="text-xs text-slate-600 dark:text-slate-400" key={request.id}>
+                  <span className="font-mono text-secondary">{request.status}</span>
+                  {` • ${request.type} (${request.requestedAt})`}
+                </div>
+              ))}
             </div>
           </div>
         </div>
+
         <div className="mt-auto pt-4 border-t border-slate-100 dark:border-primary/10">
           <div className="relative">
-            <input 
-              className="w-full bg-slate-100 dark:bg-primary/10 border-none rounded-xl py-2 px-4 text-xs focus:ring-1 focus:ring-primary placeholder:text-slate-400 dark:placeholder:text-slate-600 outline-none" 
-              placeholder="Ask The Analyst..." 
-              type="text" 
+            <input
+              className="w-full bg-slate-100 dark:bg-primary/10 border-none rounded-xl py-2 px-4 text-xs focus:ring-1 focus:ring-primary placeholder:text-slate-400 dark:placeholder:text-slate-600 outline-none"
+              placeholder="Ask The Analyst..."
+              type="text"
             />
             <button className="absolute right-2 top-1.5 text-primary flex items-center justify-center">
               <span className="material-symbols-outlined text-sm">send</span>
