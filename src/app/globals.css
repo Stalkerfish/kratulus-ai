@@ -1,21 +1,5 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: 'Public Sans';
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/publicsans/v15/ijw6RsS7_8TV5WzeN72lT69D3vDf.woff2) format('woff2');
-}
-
-@font-face {
-  font-family: 'JetBrains Mono';
-  font-style: normal;
-  font-weight: 100 800;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/jetbrainsmono/v18/t64v866Y_67A4Uu0iF9U9_9uO-X-I-i_I-K_.woff2) format('woff2');
-}
-
 :root {
   --primary: #ec5b13;
   --secondary: #0ea5e9;
@@ -33,14 +17,14 @@
   --color-secondary: var(--secondary);
   --color-background-light: var(--background-light);
   --color-background-dark: var(--background-dark);
-  --font-display: 'Public Sans', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-display: var(--font-display-next);
+  --font-mono: var(--font-mono-next);
 }
 
 body {
   background-color: var(--background-light);
   color: var(--foreground);
-  font-family: 'Public Sans', sans-serif;
+  font-family: var(--font-display-next);
 }
 
 .dark body {
@@ -65,6 +49,7 @@ body {
 
 /* Material Symbols sizing fix */
 .material-symbols-outlined {
+  font-family: var(--font-material-symbols-next);
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   display: inline-block;
   line-height: 1;

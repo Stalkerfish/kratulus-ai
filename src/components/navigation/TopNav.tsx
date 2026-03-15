@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import React from 'react';
 
 export default function TopNav() {
@@ -32,7 +33,13 @@ export default function TopNav() {
               <span className="material-symbols-outlined">notifications</span>
             </button>
             <div className="h-10 w-10 rounded-full border-2 border-primary/30 p-0.5 overflow-hidden">
-              <img className="rounded-full w-full h-full object-cover" data-alt="User profile avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuALdgktelDAIz0Y52f84EiEQ3jm2CYknlHvwCOtd4YtJGZOoJjK3LX3QjYfHOjQ90k4ff2vlNfI91LjVYmppqxLtSFejWah1BR_qvEpGQXEpxnclgvTchDSq34L-rP31XeRZ4MnC3PxV5ln1KS-J0r7WIsb9OhCr53Xck7e2MOXsX_4Noxm9SLRqoj1TBIysLLxsCqceT_mYB6ykPg_voz3qCOYsO_44XedMUeH8wITLzVQMbNHeRUJ9kgHoQteQEAD679ZTndd5hg" />
+              <Image
+                alt="User profile avatar"
+                className="rounded-full w-full h-full object-cover"
+                height={40}
+                src="/avatar.svg"
+                width={40}
+              />
             </div>
           </div>
         </div>
