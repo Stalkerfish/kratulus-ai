@@ -12,7 +12,7 @@ import type {
   TutorRequestLifecycle,
 } from '@/lib/contracts';
 
-interface AppState {
+export interface AppState {
   canvasSnapshotEvents: CanvasSnapshotEvent[];
   latestOcrParse: OcrParseResult | null;
   ocrStatus: AsyncStatus;
@@ -40,7 +40,7 @@ export type AppStateAction =
   | { type: 'tutor/requestFailed'; payload: { requestId: string; error: string } }
   | { type: 'tutor/messageAppended'; payload: TutorMessage };
 
-const initialState: AppState = {
+const seededInitialState: AppState = {
   canvasSnapshotEvents: [
     {
       id: 'snap_001',
@@ -113,7 +113,11 @@ const initialState: AppState = {
   tutorActiveRequest: { requestId: 'act_002' },
 };
 
-function appStateReducer(state: AppState, action: AppStateAction): AppState {
+export function createInitialAppState(): AppState {
+  return structuredClone(seededInitialState);
+}
+
+export function appStateReducer(state: AppState, action: AppStateAction): AppState {
   switch (action.type) {
     case 'canvas/snapshotCreated':
       return {
@@ -128,42 +132,59 @@ function appStateReducer(state: AppState, action: AppStateAction): AppState {
         ocrActiveRequest: action.payload,
       };
     case 'ocr/requestSucceeded':
+      if (state.ocrActiveRequest?.requestId && state.ocrActiveRequest.requestId !== action.payload.requestId) {
+        return state;
+      }
+
       return {
         ...state,
         ocrStatus: 'success',
         ocrError: undefined,
         latestOcrParse: action.payload.parse,
-        ocrActiveRequest: {
-          requestId: action.payload.requestId,
-          snapshotId: action.payload.parse.sourceSnapshotId,
-        },
+        ocrActiveRequest: undefined,
       };
     case 'ocr/requestFailed':
+      if (state.ocrActiveRequest?.requestId && state.ocrActiveRequest.requestId !== action.payload.requestId) {
+        return state;
+      }
+
       return {
         ...state,
         ocrStatus: 'error',
         ocrError: action.payload.error,
-        ocrActiveRequest:
-          state.ocrActiveRequest?.requestId === action.payload.requestId
-            ? state.ocrActiveRequest
-            : undefined,
+        ocrActiveRequest: undefined,
       };
     case 'ocr/confirmedExpressionSet':
       return {
         ...state,
         confirmedExpression: action.payload,
       };
-    case 'tutor/requestStarted':
+    case 'tutor/requestStarted': {
+      const existingRequestIndex = state.tutorActionRequests.findIndex(
+        (request) => request.id === action.payload.actionRequest.id,
+      );
+      const runningActionRequest = { ...action.payload.actionRequest, status: 'running' as const };
+
       return {
         ...state,
         tutorStatus: 'loading',
         tutorError: undefined,
         tutorActiveRequest: { requestId: action.payload.requestId },
-        tutorActionRequests: [...state.tutorActionRequests, { ...action.payload.actionRequest, status: 'running' }],
+        tutorActionRequests:
+          existingRequestIndex === -1
+            ? [...state.tutorActionRequests, runningActionRequest]
+            : state.tutorActionRequests.map((request, index) =>
+                index === existingRequestIndex ? runningActionRequest : request,
+              ),
       };
+    }
     case 'tutor/requestSucceeded': {
+      if (state.tutorActiveRequest?.requestId && state.tutorActiveRequest.requestId !== action.payload.requestId) {
+        return state;
+      }
+
       const nextActionRequests = state.tutorActionRequests.map((request) =>
-        request.id === action.payload.requestId ? { ...request, status: 'completed' } : request,
+        request.id === action.payload.requestId ? { ...request, status: 'completed' as const } : request,
       );
 
       return {
@@ -174,20 +195,22 @@ function appStateReducer(state: AppState, action: AppStateAction): AppState {
         tutorActionRequests: action.payload.actionRequest
           ? [...nextActionRequests, action.payload.actionRequest]
           : nextActionRequests,
-        tutorActiveRequest:
-          state.tutorActiveRequest?.requestId === action.payload.requestId ? state.tutorActiveRequest : undefined,
+        tutorActiveRequest: undefined,
       };
     }
     case 'tutor/requestFailed':
+      if (state.tutorActiveRequest?.requestId && state.tutorActiveRequest.requestId !== action.payload.requestId) {
+        return state;
+      }
+
       return {
         ...state,
         tutorStatus: 'error',
         tutorError: action.payload.error,
         tutorActionRequests: state.tutorActionRequests.map((request) =>
-          request.id === action.payload.requestId ? { ...request, status: 'rejected' } : request,
+          request.id === action.payload.requestId ? { ...request, status: 'rejected' as const } : request,
         ),
-        tutorActiveRequest:
-          state.tutorActiveRequest?.requestId === action.payload.requestId ? state.tutorActiveRequest : undefined,
+        tutorActiveRequest: undefined,
       };
     case 'tutor/messageAppended':
       return {
@@ -199,7 +222,7 @@ function appStateReducer(state: AppState, action: AppStateAction): AppState {
   }
 }
 
-interface AppStateDispatchHelpers {
+export interface AppStateDispatchHelpers {
   dispatch: React.Dispatch<AppStateAction>;
   createCanvasSnapshot: (snapshot: CanvasSnapshotEvent) => void;
   startOcrRequest: (request: OcrRequestLifecycle) => void;
@@ -224,7 +247,7 @@ interface AppStateContextValue {
 const AppStateContext = createContext<AppStateContextValue | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appStateReducer, initialState);
+  const [state, dispatch] = useReducer(appStateReducer, undefined, createInitialAppState);
 
   const actions = useMemo<AppStateDispatchHelpers>(
     () => ({
