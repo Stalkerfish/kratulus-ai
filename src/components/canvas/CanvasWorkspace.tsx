@@ -1,4 +1,7 @@
+'use client';
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAppState } from '@/lib/app-state';
 
 export type CanvasTool = 'pen' | 'eraser';
 
@@ -40,6 +43,8 @@ export default function CanvasWorkspace({
   onSnapshot,
   onStrokeOutput,
 }: CanvasWorkspaceProps) {
+  const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError } = useAppState();
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
 
@@ -155,9 +160,7 @@ export default function CanvasWorkspace({
       setStrokes((previousStrokes) => {
         const now = Date.now();
         const updatedStrokes = previousStrokes.map((stroke) =>
-          stroke.id === completedStrokeId
-            ? { ...stroke, endedAt: now, updatedAt: now }
-            : stroke,
+          stroke.id === completedStrokeId ? { ...stroke, endedAt: now, updatedAt: now } : stroke,
         );
 
         const completedStroke = updatedStrokes.find((stroke) => stroke.id === completedStrokeId);
@@ -175,24 +178,20 @@ export default function CanvasWorkspace({
         return;
       }
 
+      const strokeId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      activeStrokeIdRef.current = strokeId;
       canvas.setPointerCapture(event.pointerId);
 
-      const now = Date.now();
-      const newStroke: StrokeEvent = {
-        id: crypto.randomUUID(),
-        points: [point],
+      const initialStroke: StrokeEvent = {
+        id: strokeId,
         tool: activeTool,
         color: activeColor,
-        startedAt: now,
-        updatedAt: now,
+        points: [point],
+        startedAt: point.timestamp,
+        updatedAt: point.timestamp,
       };
 
-      activeStrokeIdRef.current = newStroke.id;
-      setStrokes((previousStrokes) => {
-        const updatedStrokes = [...previousStrokes, newStroke];
-        redrawStrokes(context, updatedStrokes);
-        return updatedStrokes;
-      });
+      setStrokes((previousStrokes) => [...previousStrokes, initialStroke]);
     };
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -205,16 +204,20 @@ export default function CanvasWorkspace({
         return;
       }
 
-      const activeStrokeId = activeStrokeIdRef.current;
+      const currentStrokeId = activeStrokeIdRef.current;
       setStrokes((previousStrokes) => {
-        const now = Date.now();
-        const updatedStrokes = previousStrokes.map((stroke) =>
-          stroke.id === activeStrokeId
-            ? { ...stroke, points: [...stroke.points, point], updatedAt: now }
+        const nextStrokes = previousStrokes.map((stroke) =>
+          stroke.id === currentStrokeId
+            ? {
+                ...stroke,
+                updatedAt: point.timestamp,
+                points: [...stroke.points, point],
+              }
             : stroke,
         );
-        redrawStrokes(context, updatedStrokes);
-        return updatedStrokes;
+
+        redrawStrokes(context, nextStrokes);
+        return nextStrokes;
       });
     };
 
@@ -229,12 +232,14 @@ export default function CanvasWorkspace({
     canvas.addEventListener('pointerdown', handlePointerDown);
     canvas.addEventListener('pointermove', handlePointerMove);
     canvas.addEventListener('pointerup', handlePointerUp);
+    canvas.addEventListener('pointerleave', handlePointerUp);
     canvas.addEventListener('pointercancel', handlePointerCancel);
 
     return () => {
       canvas.removeEventListener('pointerdown', handlePointerDown);
       canvas.removeEventListener('pointermove', handlePointerMove);
       canvas.removeEventListener('pointerup', handlePointerUp);
+      canvas.removeEventListener('pointerleave', handlePointerUp);
       canvas.removeEventListener('pointercancel', handlePointerCancel);
     };
   }, [activeColor, activeTool, getPointerPosition, onStrokeOutput, redrawStrokes]);
@@ -267,14 +272,6 @@ export default function CanvasWorkspace({
     return () => window.clearInterval(interval);
   }, [onSnapshot, snapshotIntervalMs, snapshotPayload]);
 
-'use client';
-
-import React from 'react';
-import { useAppState } from '@/lib/app-state';
-
-export default function CanvasWorkspace() {
-  const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError } = useAppState();
-
   const latestSnapshot = canvasSnapshotEvents[canvasSnapshotEvents.length - 1];
 
   return (
@@ -286,8 +283,10 @@ export default function CanvasWorkspace() {
         <div className="absolute top-4 left-6 flex items-center gap-4 bg-white/90 dark:bg-background-dark/90 px-3 py-2 rounded-lg border border-slate-200 dark:border-primary/20 backdrop-blur-sm shadow-sm z-10">
           <div className="flex items-center gap-2 pr-4 border-r border-slate-200 dark:border-primary/20">
             <button
+              type="button"
+              aria-label="Select pen tool"
               onClick={() => setActiveTool('pen')}
-              className={`w-8 h-8 rounded flex items-center justify-center ${
+              className={`w-8 h-8 rounded flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
                 activeTool === 'pen'
                   ? 'bg-primary text-white'
                   : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-primary/10'
@@ -296,8 +295,10 @@ export default function CanvasWorkspace() {
               <span className="material-symbols-outlined text-sm">edit</span>
             </button>
             <button
+              type="button"
+              aria-label="Select eraser tool"
               onClick={() => setActiveTool('eraser')}
-              className={`w-8 h-8 rounded flex items-center justify-center ${
+              className={`w-8 h-8 rounded flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
                 activeTool === 'eraser'
                   ? 'bg-primary text-white'
                   : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-primary/10'
@@ -305,30 +306,37 @@ export default function CanvasWorkspace() {
             >
               <span className="material-symbols-outlined text-sm">ink_eraser</span>
             </button>
-            <button className="w-8 h-8 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-primary/10 flex items-center justify-center">
+            <button
+              type="button"
+              aria-label="Gesture tool unavailable"
+              className="w-8 h-8 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-primary/10 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            >
               <span className="material-symbols-outlined text-sm">gesture</span>
             </button>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2" role="group" aria-label="Ink colors">
             {AVAILABLE_COLORS.map((color) => (
               <button
                 key={color}
+                type="button"
+                aria-label={`Select ${color} ink color`}
                 onClick={() => setActiveColor(color)}
-                className={`w-6 h-6 rounded-full border-2 cursor-pointer ${
+                className={`w-6 h-6 rounded-full border-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
                   activeColor === color ? 'border-primary scale-110 shadow-sm' : 'border-white'
                 }`}
                 style={{ backgroundColor: color }}
               />
             ))}
-            <div className="w-6 h-6 rounded-full bg-slate-900 border-2 border-white cursor-pointer" />
-            <div className="w-6 h-6 rounded-full bg-primary border-2 border-white cursor-pointer shadow-sm" />
-            <div className="w-6 h-6 rounded-full bg-secondary border-2 border-white cursor-pointer" />
           </div>
         </div>
 
         <div className="absolute top-4 right-6 flex items-center gap-2 z-10">
-          <button className="px-3 py-1.5 bg-slate-100 dark:bg-primary/10 border border-slate-200 dark:border-primary/30 rounded-lg text-[10px] font-mono font-bold flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-red-500" /> RECORD SESSION
+          <button
+            type="button"
+            className="px-3 py-1.5 bg-slate-100 dark:bg-primary/10 border border-slate-200 dark:border-primary/30 rounded-lg text-[10px] font-mono font-bold flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
+            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span>RECORD SESSION</span>
           </button>
         </div>
 
@@ -359,20 +367,32 @@ export default function CanvasWorkspace() {
 
       <div className="flex items-center justify-between gap-4 p-4 bg-white dark:bg-background-dark border border-slate-200 dark:border-primary/20 rounded-xl">
         <div className="flex gap-2">
-          <button className="px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-sm font-bold hover:bg-primary/20 transition-all">
+          <button
+            type="button"
+            className="px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-sm font-bold hover:bg-primary/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
             Step-by-Step Hint
           </button>
-          <button className="px-4 py-2 bg-secondary/10 text-secondary border border-secondary/20 rounded-lg text-sm font-bold hover:bg-secondary/20 transition-all">
+          <button
+            type="button"
+            className="px-4 py-2 bg-secondary/10 text-secondary border border-secondary/20 rounded-lg text-sm font-bold hover:bg-secondary/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
             Identify Error
           </button>
-          <button className="px-4 py-2 bg-slate-100 dark:bg-primary/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-primary/20 rounded-lg text-sm font-bold hover:bg-slate-200 transition-all">
+          <button
+            type="button"
+            className="px-4 py-2 bg-slate-100 dark:bg-primary/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-primary/20 rounded-lg text-sm font-bold hover:bg-slate-200 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
             Synthesize Proof
           </button>
         </div>
         <div className="flex gap-2">
-          <button className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-sm font-bold flex items-center gap-2">
+          <button
+            type="button"
+            className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-sm font-bold flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
             <span className="material-symbols-outlined text-sm">function</span>
-            Convert to LaTeX
+            <span>Convert to LaTeX</span>
           </button>
         </div>
       </div>

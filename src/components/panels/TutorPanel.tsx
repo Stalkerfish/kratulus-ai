@@ -52,12 +52,18 @@ export default function TutorPanel() {
         <div className="mt-auto pt-4 border-t border-slate-100 dark:border-primary/10">
           <div className="relative">
             <input
+              aria-label="Ask the analyst"
               className="w-full bg-slate-100 dark:bg-primary/10 border-none rounded-xl py-2 px-4 text-xs focus:ring-1 focus:ring-primary placeholder:text-slate-400 dark:placeholder:text-slate-600 outline-none"
               placeholder="Ask The Analyst..."
               type="text"
             />
-            <button className="absolute right-2 top-1.5 text-primary flex items-center justify-center">
-              <span className="material-symbols-outlined text-sm">send</span>
+            <button
+              aria-label="Send message"
+              type="button"
+              className="absolute right-2 top-1.5 text-primary flex items-center justify-center rounded-md p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            >
+              <span className="material-symbols-outlined text-sm" aria-hidden="true">send</span>
+              <span className="sr-only">Send message</span>
             </button>
           </div>
         </div>
