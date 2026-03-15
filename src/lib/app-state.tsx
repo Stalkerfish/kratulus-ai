@@ -51,14 +51,7 @@ type AppAction =
         requestId?: string;
         error: string;
       };
-    };
-
-interface AppStateContextValue extends AppState {
-  dispatch: React.Dispatch<AppAction>;
-  invokeTutor: (payload: TutorRequestPayload) => Promise<TutorResponsePayload>;
-}
-
-type AppAction =
+    }
   | { type: 'ocr/cycleStarted'; payload: { snapshot: CanvasSnapshotEvent } }
   | { type: 'ocr/cycleSucceeded'; payload: { parse: OcrParseResult } }
   | { type: 'ocr/cycleFailed'; payload: { error: string } }
@@ -138,6 +131,57 @@ function reducer(state: AppState, action: AppAction): AppState {
         },
       };
     }
+    case 'tutor/studentMessageAppended': {
+      return {
+        ...state,
+        tutorConversation: [...state.tutorConversation, action.payload],
+      };
+    }
+    case 'tutor/requestStarted': {
+      const nextRequest: TutorActionRequest = {
+        id: action.payload.requestId,
+        type: action.payload.actionType,
+        status: 'running',
+        requestedAt: withNowTime(),
+        detail: action.payload.detail,
+      };
+
+      return {
+        ...state,
+        tutorStatus: 'loading',
+        tutorError: undefined,
+        tutorActionRequests: [...state.tutorActionRequests, nextRequest],
+      };
+    }
+    case 'tutor/requestSucceeded': {
+      const updatedRequests = action.payload.requestId
+        ? state.tutorActionRequests.map((request) =>
+            request.id === action.payload.requestId ? ({ ...request, status: 'completed' } as TutorActionRequest) : request,
+          )
+        : state.tutorActionRequests;
+
+      return {
+        ...state,
+        tutorStatus: 'success',
+        tutorError: undefined,
+        tutorActionRequests: updatedRequests,
+        tutorConversation: [...state.tutorConversation, action.payload.response.message],
+      };
+    }
+    case 'tutor/requestFailed': {
+      const updatedRequests = action.payload.requestId
+        ? state.tutorActionRequests.map((request) =>
+            request.id === action.payload.requestId ? ({ ...request, status: 'rejected' } as TutorActionRequest) : request,
+          )
+        : state.tutorActionRequests;
+
+      return {
+        ...state,
+        tutorStatus: 'error',
+        tutorError: action.payload.error,
+        tutorActionRequests: updatedRequests,
+      };
+    }
     default:
       return state;
   }
@@ -157,23 +201,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
 }
 
+
+
 export function useAppState() {
   const context = useContext(AppStateContext);
   if (!context) {
     throw new Error('useAppState must be used within an AppStateProvider');
   }
   return context;
-}
-
-export function useAppStateActions() {
-  const context = useContext(AppStateContext);
-  if (!context) {
-    throw new Error('useAppStateActions must be used within an AppStateProvider');
-  }
-  return {
-    dispatch: context.dispatch,
-    invokeTutor: context.invokeTutor,
-  };
 }
 
 export function useAppDispatch() {

@@ -74,6 +74,10 @@ function validateOcrRequest(body: unknown): {
       snapshotId: snapshotId as string,
       strokeCount: strokeCount as number,
       inkModel: inkModel as string,
+      canvasSize: body.canvasSize as { width: number; height: number },
+      sessionId: body.sessionId as string,
+      latestStrokeAt: body.latestStrokeAt as number | null,
+      trigger: body.trigger as 'stroke-complete' | 'inactivity',
     },
   };
 }

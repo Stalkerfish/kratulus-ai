@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppState } from '@/lib/app-state';
 import type { CanvasSnapshotEvent, OcrRequestPayload } from '@/lib/contracts';
 import { requestOcrParse } from '@/lib/ocrClient';
+import { requestTutorResponse } from '@/lib/tutorClient';
 import { type StoredSession, saveLatestSession } from '@/lib/sessionStore';
 
 export type CanvasTool = 'pen' | 'eraser';
@@ -33,7 +34,7 @@ interface CanvasWorkspaceProps {
 
 export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps) {
   const dispatch = useAppDispatch();
-  const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError, tutorActionRequests } =
+  const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError, tutorActionRequests, tutorConversation } =
     useAppState();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -73,7 +74,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
       dispatch({ type: 'tutor/requestStarted', payload: { requestId, actionType: type, detail } });
 
       try {
-        const response = await invokeTutor({
+        const response = await requestTutorResponse({
           confirmedExpressionLatex: sessionExpression.latex,
           conversation: tutorConversation,
           requestedAction: type,
@@ -90,7 +91,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
         });
       }
     },
-    [dispatch, invokeTutor, sessionExpression, tutorConversation],
+    [dispatch, sessionExpression, tutorConversation],
   );
 
   useEffect(() => {
