@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 
 export default function RoadmapSidebar() {
   return (
@@ -12,28 +13,44 @@ export default function RoadmapSidebar() {
           </div>
           <p className="text-[11px] text-slate-500 mt-1">65% Progress Complete</p>
         </div>
-        <nav className="flex flex-col gap-1">
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary/10 border border-primary/30 text-primary group cursor-pointer">
-            <span className="material-symbols-outlined text-[20px] fill-1">insights</span>
+        <nav className="flex flex-col gap-1" aria-label="Derivative roadmap">
+          <button
+            type="button"
+            aria-current="page"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary/10 border border-primary/30 text-primary group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
+            <span className="material-symbols-outlined text-[20px] fill-1" aria-hidden="true">insights</span>
             <span className="text-sm font-semibold">The Derivative</span>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-primary/5 transition-colors cursor-pointer">
-            <span className="material-symbols-outlined text-[20px]">menu_book</span>
+          </button>
+          <button
+            type="button"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-primary/5 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
+            <span className="material-symbols-outlined text-[20px]" aria-hidden="true">menu_book</span>
             <span className="text-sm font-medium">Rules</span>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-primary/5 transition-colors cursor-pointer">
-            <span className="material-symbols-outlined text-[20px]">account_tree</span>
+          </button>
+          <button
+            type="button"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-primary/5 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
+            <span className="material-symbols-outlined text-[20px]" aria-hidden="true">account_tree</span>
             <span className="text-sm font-medium">Chain Rule</span>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-primary/5 transition-colors cursor-pointer">
-            <span className="material-symbols-outlined text-[20px]">texture</span>
+          </button>
+          <button
+            type="button"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-primary/5 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
+            <span className="material-symbols-outlined text-[20px]" aria-hidden="true">texture</span>
             <span className="text-sm font-medium">Implicit Diff.</span>
-          </div>
+          </button>
         </nav>
-        <button className="w-full mt-6 py-2 px-4 bg-slate-900 dark:bg-primary text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
-          <span className="material-symbols-outlined text-sm">map</span>
-          VIEW FULL ROADMAP
-        </button>
+        <Link
+          href="/roadmap"
+          className="w-full mt-6 py-2 px-4 bg-slate-900 dark:bg-primary text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        >
+          <span className="material-symbols-outlined text-sm" aria-hidden="true">map</span>
+          <span>VIEW FULL ROADMAP</span>
+        </Link>
       </div>
 
       <div className="bg-white dark:bg-background-dark border border-slate-200 dark:border-primary/20 rounded-xl p-4 flex-grow relative overflow-hidden">

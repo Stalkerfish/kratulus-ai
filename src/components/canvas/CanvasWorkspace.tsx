@@ -1,9 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppState } from '@/lib/app-state';
-import type { StoredSession } from '@/lib/sessionStore';
-import { downloadSession, saveLatestSession } from '@/lib/sessionStore';
 
 export type CanvasTool = 'pen' | 'eraser';
 
@@ -33,6 +31,13 @@ interface CanvasWorkspaceProps {
 export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps) {
   const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError, tutorActionRequests } =
     useAppState();
+
+export default function CanvasWorkspace({
+  snapshotIntervalMs = 3000,
+  onSnapshot,
+  onStrokeOutput,
+}: CanvasWorkspaceProps) {
+  const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError } = useAppState();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -168,7 +173,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
 
       setStrokes((prev) => {
         const now = Date.now();
-        const updated = prev.map((stroke) =>
+        const updatedStrokes = previousStrokes.map((stroke) =>
           stroke.id === completedStrokeId ? { ...stroke, endedAt: now, updatedAt: now } : stroke,
         );
 
@@ -185,24 +190,24 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
 
     const handlePointerDown = (event: PointerEvent) => {
       const point = getPointerPosition(event);
+      if (!point) {
+        return;
+      }
+
+      const strokeId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      activeStrokeIdRef.current = strokeId;
       canvas.setPointerCapture(event.pointerId);
 
-      const now = Date.now();
-      const newStroke: StrokeEvent = {
-        id: crypto.randomUUID(),
-        points: [point],
+      const initialStroke: StrokeEvent = {
+        id: strokeId,
         tool: activeTool,
         color: activeColor,
-        startedAt: now,
-        updatedAt: now,
+        points: [point],
+        startedAt: point.timestamp,
+        updatedAt: point.timestamp,
       };
 
-      activeStrokeIdRef.current = newStroke.id;
-      setStrokes((prev) => {
-        const updated = [...prev, newStroke];
-        redrawStrokes(context, updated);
-        return updated;
-      });
+      setStrokes((previousStrokes) => [...previousStrokes, initialStroke]);
     };
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -211,15 +216,24 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
       }
 
       const point = getPointerPosition(event);
-      const activeStrokeId = activeStrokeIdRef.current;
+      if (!point) {
+        return;
+      }
 
-      setStrokes((prev) => {
-        const now = Date.now();
-        const updated = prev.map((stroke) =>
-          stroke.id === activeStrokeId ? { ...stroke, points: [...stroke.points, point], updatedAt: now } : stroke,
+      const currentStrokeId = activeStrokeIdRef.current;
+      setStrokes((previousStrokes) => {
+        const nextStrokes = previousStrokes.map((stroke) =>
+          stroke.id === currentStrokeId
+            ? {
+                ...stroke,
+                updatedAt: point.timestamp,
+                points: [...stroke.points, point],
+              }
+            : stroke,
         );
-        redrawStrokes(context, updated);
-        return updated;
+
+        redrawStrokes(context, nextStrokes);
+        return nextStrokes;
       });
     };
 
@@ -229,12 +243,14 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
     canvas.addEventListener('pointerdown', handlePointerDown);
     canvas.addEventListener('pointermove', handlePointerMove);
     canvas.addEventListener('pointerup', handlePointerUp);
+    canvas.addEventListener('pointerleave', handlePointerUp);
     canvas.addEventListener('pointercancel', handlePointerCancel);
 
     return () => {
       canvas.removeEventListener('pointerdown', handlePointerDown);
       canvas.removeEventListener('pointermove', handlePointerMove);
       canvas.removeEventListener('pointerup', handlePointerUp);
+      canvas.removeEventListener('pointerleave', handlePointerUp);
       canvas.removeEventListener('pointercancel', handlePointerCancel);
     };
   }, [activeColor, activeTool, isRecording, isReplayActive, redrawStrokes]);
@@ -301,25 +317,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
       const next = sortedTimeline[index + 1];
       const gap = next ? Math.max(40, (next.startedAt - current.startedAt) / replaySpeed) : 250;
 
-      replayTimerRef.current = window.setTimeout(() => runStep(index + 1), gap);
-    };
-
-    runStep(0);
-  }, [recordTimeline, redrawStrokes, replaySpeed, stopReplay]);
-
-  const handleExport = useCallback(() => {
-    const sourceExpression = confirmedExpression ?? initialSession?.confirmedExpression ?? null;
-    const sourceActions = tutorActionRequests.length > 0 ? tutorActionRequests : initialSession?.tutorActionHistory ?? [];
-
-    downloadSession({
-      id: initialSession?.id ?? 'latest',
-      createdAt: initialSession?.createdAt ?? Date.now(),
-      updatedAt: Date.now(),
-      strokeTimeline: recordTimeline,
-      confirmedExpression: sourceExpression,
-      tutorActionHistory: sourceActions,
-    });
-  }, [confirmedExpression, initialSession, recordTimeline, tutorActionRequests]);
+  const latestSnapshot = canvasSnapshotEvents[canvasSnapshotEvents.length - 1];
 
   return (
     <div className="flex flex-col gap-4 h-full">
@@ -330,16 +328,22 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
         <div className="absolute top-4 left-6 flex items-center gap-4 bg-white/90 dark:bg-background-dark/90 px-3 py-2 rounded-lg border border-slate-200 dark:border-primary/20 backdrop-blur-sm shadow-sm z-10">
           <div className="flex items-center gap-2 pr-4 border-r border-slate-200 dark:border-primary/20">
             <button
+              type="button"
+              aria-label="Select pen tool"
               onClick={() => setActiveTool('pen')}
-              className={`w-8 h-8 rounded flex items-center justify-center ${
-                activeTool === 'pen' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-primary/10'
+              className={`w-8 h-8 rounded flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
+                activeTool === 'pen'
+                  ? 'bg-primary text-white'
+                  : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-primary/10'
               }`}
             >
               <span className="material-symbols-outlined text-sm">edit</span>
             </button>
             <button
+              type="button"
+              aria-label="Select eraser tool"
               onClick={() => setActiveTool('eraser')}
-              className={`w-8 h-8 rounded flex items-center justify-center ${
+              className={`w-8 h-8 rounded flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
                 activeTool === 'eraser'
                   ? 'bg-primary text-white'
                   : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-primary/10'
@@ -347,13 +351,22 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
             >
               <span className="material-symbols-outlined text-sm">ink_eraser</span>
             </button>
+            <button
+              type="button"
+              aria-label="Gesture tool unavailable"
+              className="w-8 h-8 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-primary/10 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            >
+              <span className="material-symbols-outlined text-sm">gesture</span>
+            </button>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2" role="group" aria-label="Ink colors">
             {AVAILABLE_COLORS.map((color) => (
               <button
                 key={color}
+                type="button"
+                aria-label={`Select ${color} ink color`}
                 onClick={() => setActiveColor(color)}
-                className={`w-6 h-6 rounded-full border-2 cursor-pointer ${
+                className={`w-6 h-6 rounded-full border-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
                   activeColor === color ? 'border-primary scale-110 shadow-sm' : 'border-white'
                 }`}
                 style={{ backgroundColor: color }}
@@ -364,11 +377,11 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
 
         <div className="absolute top-4 right-6 flex items-center gap-2 z-10">
           <button
-            onClick={() => setIsRecording((value) => !value)}
-            className="px-3 py-1.5 bg-slate-100 dark:bg-primary/10 border border-slate-200 dark:border-primary/30 rounded-lg text-[10px] font-mono font-bold flex items-center gap-2"
+            type="button"
+            className="px-3 py-1.5 bg-slate-100 dark:bg-primary/10 border border-slate-200 dark:border-primary/30 rounded-lg text-[10px] font-mono font-bold flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
-            <span className={`w-2 h-2 rounded-full ${isRecording ? 'bg-red-500' : 'bg-slate-400'}`} />
-            {isRecording ? 'RECORDING' : 'RECORD OFF'}
+            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span>RECORD SESSION</span>
           </button>
         </div>
 
@@ -398,31 +411,32 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
 
       <div className="flex items-center justify-between gap-4 p-4 bg-white dark:bg-background-dark border border-slate-200 dark:border-primary/20 rounded-xl">
         <div className="flex gap-2">
-          <button className="px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-sm font-bold hover:bg-primary/20 transition-all">
+          <button
+            type="button"
+            className="px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-sm font-bold hover:bg-primary/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
             Step-by-Step Hint
           </button>
-          <button className="px-4 py-2 bg-secondary/10 text-secondary border border-secondary/20 rounded-lg text-sm font-bold hover:bg-secondary/20 transition-all">
+          <button
+            type="button"
+            className="px-4 py-2 bg-secondary/10 text-secondary border border-secondary/20 rounded-lg text-sm font-bold hover:bg-secondary/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
             Identify Error
           </button>
+          <button
+            type="button"
+            className="px-4 py-2 bg-slate-100 dark:bg-primary/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-primary/20 rounded-lg text-sm font-bold hover:bg-slate-200 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
+            Synthesize Proof
+          </button>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2">
           <button
-            onClick={() => setIsRecording((value) => !value)}
-            className="px-4 py-2 bg-slate-100 dark:bg-primary/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-primary/20 rounded-lg text-sm font-bold"
+            type="button"
+            className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-sm font-bold flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
-            {isRecording ? 'Stop Recording' : 'Record'}
-          </button>
-          <button
-            onClick={handleReplay}
-            className="px-4 py-2 bg-slate-100 dark:bg-primary/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-primary/20 rounded-lg text-sm font-bold"
-          >
-            Replay
-          </button>
-          <button
-            onClick={handleExport}
-            className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-sm font-bold"
-          >
-            Export JSON
+            <span className="material-symbols-outlined text-sm">function</span>
+            <span>Convert to LaTeX</span>
           </button>
         </div>
       </div>
