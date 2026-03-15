@@ -1,7 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useAppState } from '@/lib/app-state';
+import { useAppDispatch, useAppState } from '@/lib/app-state';
+import type { CanvasSnapshotEvent, OcrRequestPayload } from '@/lib/contracts';
+import { requestOcrParse } from '@/lib/ocrClient';
+import { requestTutorResponse } from '@/lib/tutorClient';
 import { type StoredSession, saveLatestSession } from '@/lib/sessionStore';
 
 export type CanvasTool = 'pen' | 'eraser';
@@ -57,6 +60,9 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
   const [replayProgress, setReplayProgress] = useState(0);
 
   const activeStrokeIdRef = useRef<string | null>(null);
+  const snapshotTimerRef = useRef<number | null>(null);
+  const lastScheduledStrokeCountRef = useRef<number>(0);
+  const lastScheduledUpdatedAtRef = useRef<number>(0);
 
   const latestSnapshot = canvasSnapshotEvents[canvasSnapshotEvents.length - 1];
   const sessionExpression = confirmedExpression ?? initialSession?.confirmedExpression ?? null;
@@ -239,6 +245,8 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
 
         return updated;
       });
+
+      scheduleSnapshot('stroke-complete', 800);
     };
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -288,6 +296,8 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
         redrawStrokes(context, nextStrokes);
         return nextStrokes;
       });
+
+      scheduleSnapshot('inactivity', 1200);
     };
 
     const handlePointerUp = (event: PointerEvent) => finalizeStroke(event.pointerId);
@@ -320,6 +330,9 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
     () => () => {
       if (replayTimerRef.current) {
         window.clearTimeout(replayTimerRef.current);
+      }
+      if (snapshotTimerRef.current) {
+        window.clearTimeout(snapshotTimerRef.current);
       }
     },
     [],

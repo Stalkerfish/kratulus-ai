@@ -6,22 +6,26 @@ import type {
   CanvasSnapshotEvent,
   ConfirmedExpression,
   OcrParseResult,
+  OcrRequestLifecycle,
   TutorActionRequest,
   TutorMessage,
+  TutorRequestLifecycle,
   TutorRequestPayload,
   TutorResponsePayload,
 } from '@/lib/contracts';
 
-interface AppState {
+export interface AppState {
   canvasSnapshotEvents: CanvasSnapshotEvent[];
   latestOcrParse: OcrParseResult | null;
   ocrStatus: AsyncStatus;
   ocrError?: string;
+  ocrActiveRequest?: OcrRequestLifecycle;
   confirmedExpression: ConfirmedExpression | null;
   tutorConversation: TutorMessage[];
   tutorActionRequests: TutorActionRequest[];
   tutorStatus: AsyncStatus;
   tutorError?: string;
+  tutorActiveRequest?: TutorRequestLifecycle;
 }
 
 type AppAction =
@@ -63,20 +67,6 @@ const initialState: AppState = {
       strokeCount: 42,
       status: 'captured',
     },
-    {
-      id: 'snap_002',
-      timestamp: '14:02:15',
-      label: 'Chain rule branch isolated',
-      strokeCount: 57,
-      status: 'processing',
-    },
-    {
-      id: 'snap_003',
-      timestamp: '14:02:18',
-      label: 'Derivative parse stabilized',
-      strokeCount: 64,
-      status: 'parsed',
-    },
   ],
   latestOcrParse: {
     latex: "f'(x) = 2x\\cos(x^2) + 3",
@@ -95,15 +85,8 @@ const initialState: AppState = {
     {
       id: 'msg_001',
       role: 'tutor',
-      content:
-        'Correct application of the Chain Rule. You identified u = x² and du/dx = 2x.',
+      content: 'Correct application of the Chain Rule. You identified u = x² and du/dx = 2x.',
       createdAt: '14:02:30',
-    },
-    {
-      id: 'msg_002',
-      role: 'tutor',
-      content: 'Try evaluating the derivative at x = √π to find the slope of the tangent line.',
-      createdAt: '14:02:33',
     },
   ],
   tutorActionRequests: [
@@ -235,10 +218,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }
 
+
+
 export function useAppState() {
-  const state = useContext(AppStateContext);
-  if (!state) {
+  const context = useContext(AppStateContext);
+  if (!context) {
     throw new Error('useAppState must be used within an AppStateProvider');
   }
-  return state;
+  return context;
+}
+
+export function useAppDispatch() {
+  const dispatch = useContext(AppDispatchContext);
+  if (!dispatch) {
+    throw new Error('useAppDispatch must be used within an AppStateProvider');
+  }
+  return dispatch;
 }
