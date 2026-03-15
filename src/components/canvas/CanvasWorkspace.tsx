@@ -22,21 +22,15 @@ export interface StrokeEvent {
   endedAt?: number;
 }
 
-export interface CanvasSnapshot {
-  imageDataUrl: string;
-  width: number;
-  height: number;
-  generatedAt: number;
-  strokes: StrokeEvent[];
-}
+const AVAILABLE_COLORS = ['#0f172a', '#f59e0b', '#6d28d9'];
 
 interface CanvasWorkspaceProps {
-  snapshotIntervalMs?: number;
-  onSnapshot?: (snapshot: CanvasSnapshot) => void;
-  onStrokeOutput?: (stroke: StrokeEvent, allStrokes: StrokeEvent[]) => void;
+  initialSession?: StoredSession | null;
 }
 
-const AVAILABLE_COLORS = ['#0f172a', '#f59e0b', '#6d28d9'];
+export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps) {
+  const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError, tutorActionRequests } =
+    useAppState();
 
 export default function CanvasWorkspace({
   snapshotIntervalMs = 3000,
@@ -47,27 +41,30 @@ export default function CanvasWorkspace({
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const replayTimerRef = useRef<number | null>(null);
 
   const [activeTool, setActiveTool] = useState<CanvasTool>('pen');
   const [activeColor, setActiveColor] = useState<string>(AVAILABLE_COLORS[0]);
-  const [strokes, setStrokes] = useState<StrokeEvent[]>([]);
+  const [strokes, setStrokes] = useState<StrokeEvent[]>(initialSession?.strokeTimeline ?? []);
+  const [recordTimeline, setRecordTimeline] = useState<StrokeEvent[]>(initialSession?.strokeTimeline ?? []);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isReplayActive, setIsReplayActive] = useState(false);
+  const [replaySpeed, setReplaySpeed] = useState(1);
+  const [replayProgress, setReplayProgress] = useState(0);
 
   const activeStrokeIdRef = useRef<string | null>(null);
 
-  const getPointerPosition = useCallback((event: PointerEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      return null;
+  const latestSnapshot = canvasSnapshotEvents[canvasSnapshotEvents.length - 1];
+  const sessionExpression = confirmedExpression ?? initialSession?.confirmedExpression ?? null;
+
+  useEffect(() => {
+    if (!initialSession) {
+      return;
     }
 
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
-      pressure: event.pressure || 0.5,
-      timestamp: Date.now(),
-    };
-  }, []);
+    setStrokes(initialSession.strokeTimeline);
+    setRecordTimeline(initialSession.strokeTimeline);
+  }, [initialSession]);
 
   const redrawStrokes = useCallback((ctx: CanvasRenderingContext2D, allStrokes: StrokeEvent[]) => {
     const canvas = canvasRef.current;
@@ -100,6 +97,14 @@ export default function CanvasWorkspace({
     });
   }, []);
 
+  const stopReplay = useCallback(() => {
+    if (replayTimerRef.current) {
+      window.clearTimeout(replayTimerRef.current);
+      replayTimerRef.current = null;
+    }
+    setIsReplayActive(false);
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const stage = stageRef.current;
@@ -126,20 +131,19 @@ export default function CanvasWorkspace({
     };
 
     resize();
-
-    const resizeObserver = new ResizeObserver(() => resize());
-    resizeObserver.observe(stage);
+    const observer = new ResizeObserver(() => resize());
+    observer.observe(stage);
     window.addEventListener('resize', resize);
 
     return () => {
-      resizeObserver.disconnect();
+      observer.disconnect();
       window.removeEventListener('resize', resize);
     };
   }, [redrawStrokes, strokes]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) {
+    if (!canvas || isReplayActive) {
       return;
     }
 
@@ -147,6 +151,16 @@ export default function CanvasWorkspace({
     if (!context) {
       return;
     }
+
+    const getPointerPosition = (event: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        pressure: event.pressure || 0.5,
+        timestamp: Date.now(),
+      };
+    };
 
     const finalizeStroke = (pointerId: number) => {
       if (!activeStrokeIdRef.current) {
@@ -157,18 +171,20 @@ export default function CanvasWorkspace({
       activeStrokeIdRef.current = null;
       canvas.releasePointerCapture(pointerId);
 
-      setStrokes((previousStrokes) => {
+      setStrokes((prev) => {
         const now = Date.now();
         const updatedStrokes = previousStrokes.map((stroke) =>
           stroke.id === completedStrokeId ? { ...stroke, endedAt: now, updatedAt: now } : stroke,
         );
 
-        const completedStroke = updatedStrokes.find((stroke) => stroke.id === completedStrokeId);
-        if (completedStroke && onStrokeOutput) {
-          onStrokeOutput(completedStroke, updatedStrokes);
+        if (isRecording) {
+          const completed = updated.find((stroke) => stroke.id === completedStrokeId);
+          if (completed) {
+            setRecordTimeline((timeline) => [...timeline, completed]);
+          }
         }
 
-        return updatedStrokes;
+        return updated;
       });
     };
 
@@ -221,13 +237,8 @@ export default function CanvasWorkspace({
       });
     };
 
-    const handlePointerUp = (event: PointerEvent) => {
-      finalizeStroke(event.pointerId);
-    };
-
-    const handlePointerCancel = (event: PointerEvent) => {
-      finalizeStroke(event.pointerId);
-    };
+    const handlePointerUp = (event: PointerEvent) => finalizeStroke(event.pointerId);
+    const handlePointerCancel = (event: PointerEvent) => finalizeStroke(event.pointerId);
 
     canvas.addEventListener('pointerdown', handlePointerDown);
     canvas.addEventListener('pointermove', handlePointerMove);
@@ -242,35 +253,69 @@ export default function CanvasWorkspace({
       canvas.removeEventListener('pointerleave', handlePointerUp);
       canvas.removeEventListener('pointercancel', handlePointerCancel);
     };
-  }, [activeColor, activeTool, getPointerPosition, onStrokeOutput, redrawStrokes]);
-
-  const snapshotPayload = useMemo(() => ({ strokes }), [strokes]);
+  }, [activeColor, activeTool, isRecording, isReplayActive, redrawStrokes]);
 
   useEffect(() => {
-    if (!onSnapshot) {
+    const sourceExpression = confirmedExpression ?? initialSession?.confirmedExpression ?? null;
+    const sourceActions = tutorActionRequests.length > 0 ? tutorActionRequests : initialSession?.tutorActionHistory ?? [];
+
+    const session: StoredSession = {
+      id: initialSession?.id ?? 'latest',
+      createdAt: initialSession?.createdAt ?? Date.now(),
+      updatedAt: Date.now(),
+      strokeTimeline: recordTimeline,
+      confirmedExpression: sourceExpression,
+      tutorActionHistory: sourceActions,
+    };
+
+    saveLatestSession(session);
+  }, [confirmedExpression, initialSession, recordTimeline, tutorActionRequests]);
+
+  useEffect(
+    () => () => {
+      if (replayTimerRef.current) {
+        window.clearTimeout(replayTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const handleReplay = useCallback(() => {
+    if (recordTimeline.length === 0) {
       return;
     }
 
-    const emitSnapshot = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return;
+    }
+
+    stopReplay();
+    setIsReplayActive(true);
+    setReplayProgress(0);
+
+    const sortedTimeline = [...recordTimeline].sort((a, b) => a.startedAt - b.startedAt);
+
+    const runStep = (index: number) => {
+      if (index >= sortedTimeline.length) {
+        redrawStrokes(context, sortedTimeline);
+        setReplayProgress(100);
+        setIsReplayActive(false);
         return;
       }
 
-      onSnapshot({
-        imageDataUrl: canvas.toDataURL('image/png'),
-        width: canvas.width,
-        height: canvas.height,
-        generatedAt: Date.now(),
-        strokes: snapshotPayload.strokes,
-      });
-    };
+      const visible = sortedTimeline.slice(0, index + 1);
+      redrawStrokes(context, visible);
+      setReplayProgress(((index + 1) / sortedTimeline.length) * 100);
 
-    emitSnapshot();
-    const interval = window.setInterval(emitSnapshot, snapshotIntervalMs);
-
-    return () => window.clearInterval(interval);
-  }, [onSnapshot, snapshotIntervalMs, snapshotPayload]);
+      const current = sortedTimeline[index];
+      const next = sortedTimeline[index + 1];
+      const gap = next ? Math.max(40, (next.startedAt - current.startedAt) / replaySpeed) : 250;
 
   const latestSnapshot = canvasSnapshotEvents[canvasSnapshotEvents.length - 1];
 
@@ -341,13 +386,14 @@ export default function CanvasWorkspace({
         </div>
 
         <canvas ref={canvasRef} className="absolute inset-0 touch-none" />
+
         <div className="absolute inset-0 p-20 flex flex-col items-center justify-center opacity-80 pointer-events-none">
           <div className="max-w-md space-y-8">
             <div className="text-4xl font-display text-slate-800 dark:text-slate-200 italic opacity-60">
               {latestSnapshot?.label ?? 'Waiting for canvas input...'}
             </div>
             <div className="text-3xl font-display text-primary italic border-l-4 border-primary/40 pl-6 py-2">
-              {confirmedExpression?.latex ?? 'No confirmed expression yet'}
+              {sessionExpression?.latex ?? 'No confirmed expression yet'}
             </div>
             <div className="text-xs font-mono uppercase text-slate-500 dark:text-slate-400 tracking-widest">
               OCR {ocrStatus}
@@ -358,9 +404,7 @@ export default function CanvasWorkspace({
         </div>
 
         <div className="absolute bottom-4 left-6 right-6 flex justify-between items-center pointer-events-none">
-          <div className="text-[10px] font-mono text-slate-400 uppercase">
-            Last snapshot: {latestSnapshot?.id ?? 'none'}
-          </div>
+          <div className="text-[10px] font-mono text-slate-400 uppercase">Last snapshot: {latestSnapshot?.id ?? 'none'}</div>
           <div className="text-[10px] font-mono text-slate-400 uppercase">Snapshots: {canvasSnapshotEvents.length}</div>
         </div>
       </div>
@@ -395,6 +439,33 @@ export default function CanvasWorkspace({
             <span>Convert to LaTeX</span>
           </button>
         </div>
+      </div>
+
+      <div className="px-4 py-3 bg-white dark:bg-background-dark border border-slate-200 dark:border-primary/20 rounded-xl flex items-center gap-3">
+        <label htmlFor="replay-speed" className="text-xs font-mono uppercase text-slate-500">
+          Replay speed
+        </label>
+        <select
+          id="replay-speed"
+          value={replaySpeed}
+          onChange={(event) => setReplaySpeed(Number(event.target.value))}
+          className="px-2 py-1 border border-slate-200 dark:border-primary/20 rounded bg-transparent"
+        >
+          <option value={0.5}>0.5x</option>
+          <option value={1}>1x</option>
+          <option value={1.5}>1.5x</option>
+          <option value={2}>2x</option>
+        </select>
+        <div className="text-xs font-mono uppercase text-slate-500">Progress {replayProgress.toFixed(0)}%</div>
+        {isReplayActive ? (
+          <button
+            onClick={stopReplay}
+            className="ml-auto px-3 py-1 border border-slate-200 dark:border-primary/20 rounded text-xs font-bold"
+          >
+            Stop Replay
+          </button>
+        ) : null}
+        <div className="text-xs font-mono uppercase text-slate-400 ml-auto">Recorded strokes {recordTimeline.length}</div>
       </div>
     </div>
   );
