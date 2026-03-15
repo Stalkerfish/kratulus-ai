@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Calculus Lab | The Analyst AI</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#ec5b13",
+                        "secondary": "#0ea5e9",
+                        "background-light": "#f8f6f6",
+                        "background-dark": "#221610",
+                    },
+                    fontFamily: {
+                        "display": ["Public Sans", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"]
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+    <style>
+        .blueprint-grid {
+            background-image: radial-gradient(circle, #ec5b1322 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+
+        .canvas-grid {
+            background-image: linear-gradient(to right, #00000008 1px, transparent 1px),
+                linear-gradient(to bottom, #00000008 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        .dark .canvas-grid {
+            background-image: linear-gradient(to right, #ffffff08 1px, transparent 1px),
+                linear-gradient(to bottom, #ffffff08 1px, transparent 1px);
+        }
+    </style>
+</head>
+
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
+    <!-- Top Navigation Bar -->
+    <header
+        class="border-b border-slate-200 dark:border-primary/20 bg-white/80 dark:bg-background-dark/80 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-[1600px] mx-auto flex items-center justify-between px-6 py-3">
+            <div class="flex items-center gap-8">
+                <div class="flex items-center gap-3">
+                    <div class="bg-primary p-1.5 rounded-lg">
+                        <span class="material-symbols-outlined text-white text-2xl">query_stats</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <h2 class="text-slate-900 dark:text-white text-lg font-bold leading-none tracking-tight">
+                            Calculus Lab</h2>
+                        <span class="text-[10px] font-mono text-primary uppercase tracking-widest">The Analyst AI
+                            v2.4</span>
+                    </div>
+                </div>
+                <nav class="hidden lg:flex items-center gap-6">
+                    <a class="text-primary text-sm font-semibold border-b-2 border-primary pb-1" href="#">Lab</a>
+                    <a class="text-slate-500 dark:text-slate-400 text-sm font-medium hover:text-primary transition-colors"
+                        href="#">Library</a>
+                    <a class="text-slate-500 dark:text-slate-400 text-sm font-medium hover:text-primary transition-colors"
+                        href="#">Simulations</a>
+                    <a class="text-slate-500 dark:text-slate-400 text-sm font-medium hover:text-primary transition-colors"
+                        href="#">Settings</a>
+                </nav>
+            </div>
+            <div class="flex items-center gap-4">
+                <div
+                    class="hidden md:flex items-center bg-slate-100 dark:bg-primary/10 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-primary/20">
+                    <span class="material-symbols-outlined text-slate-400 text-sm">tablet_mac</span>
+                    <span class="text-xs font-mono ml-2 text-slate-600 dark:text-slate-300">Deco Mini 7: <span
+                            class="text-green-500">Connected</span></span>
+                </div>
+                <div class="flex gap-2 border-l border-slate-200 dark:border-primary/20 pl-4">
+                    <button
+                        class="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-primary/20 rounded-xl transition-all">
+                        <span class="material-symbols-outlined">notifications</span>
+                    </button>
+                    <div class="h-10 w-10 rounded-full border-2 border-primary/30 p-0.5 overflow-hidden">
+                        <img class="rounded-full w-full h-full object-cover" data-alt="User profile avatar"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuALdgktelDAIz0Y52f84EiEQ3jm2CYknlHvwCOtd4YtJGZOoJjK3LX3QjYfHOjQ90k4ff2vlNfI91LjVYmppqxLtSFejWah1BR_qvEpGQXEpxnclgvTchDSq34L-rP31XeRZ4MnC3PxV5ln1KS-J0r7WIsb9OhCr53Xck7e2MOXsX_4Noxm9SLRqoj1TBIysLLxsCqceT_mYB6ykPg_voz3qCOYsO_44XedMUeH8wITLzVQMbNHeRUJ9kgHoQteQEAD679ZTndd5hg" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+    <main class="max-w-[1600px] mx-auto p-4 lg:p-6 grid grid-cols-12 gap-6 h-[calc(100vh-80px)]">
+        <!-- Left Sidebar: Roadmap Panel -->
+        <aside class="col-span-12 lg:col-span-2 flex flex-col gap-4 overflow-y-auto pr-2">
+            <div class="bg-white dark:bg-background-dark border border-slate-200 dark:border-primary/20 rounded-xl p-4">
+                <div class="mb-4">
+                    <span class="text-[10px] font-mono text-primary uppercase font-bold tracking-tighter">Current
+                        Module</span>
+                    <h3 class="text-slate-900 dark:text-white font-bold text-lg">Ch 3: Derivatives</h3>
+                    <div class="w-full bg-slate-100 dark:bg-primary/10 h-1.5 rounded-full mt-2 overflow-hidden">
+                        <div class="bg-primary h-full w-[65%]" style="box-shadow: 0 0 8px #ec5b13aa"></div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1">65% Progress Complete</p>
+                </div>
+                <nav class="flex flex-col gap-1">
+                    <div
+                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary/10 border border-primary/30 text-primary group cursor-pointer">
+                        <span class="material-symbols-outlined text-[20px] fill-1">insights</span>
+                        <span class="text-sm font-semibold">The Derivative</span>
+                    </div>
+                    <div
+                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-primary/5 transition-colors cursor-pointer">
+                        <span class="material-symbols-outlined text-[20px]">menu_book</span>
+                        <span class="text-sm font-medium">Rules</span>
+                    </div>
+                    <div
+                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-primary/5 transition-colors cursor-pointer">
+                        <span class="material-symbols-outlined text-[20px]">account_tree</span>
+                        <span class="text-sm font-medium">Chain Rule</span>
+                    </div>
+                    <div
+                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-primary/5 transition-colors cursor-pointer">
+                        <span class="material-symbols-outlined text-[20px]">texture</span>
+                        <span class="text-sm font-medium">Implicit Diff.</span>
+                    </div>
+                </nav>
+                <button
+                    class="w-full mt-6 py-2 px-4 bg-slate-900 dark:bg-primary text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined text-sm">map</span>
+                    VIEW FULL ROADMAP
+                </button>
+            </div>
+            <!-- Visualization Mini-Panel -->
+            <div
+                class="bg-white dark:bg-background-dark border border-slate-200 dark:border-primary/20 rounded-xl p-4 flex-grow relative overflow-hidden">
+                <span class="text-[10px] font-mono text-secondary uppercase font-bold mb-2 block">Tangent
+                    Analysis</span>
+                <div
+                    class="relative h-48 w-full border border-slate-100 dark:border-primary/10 rounded-lg overflow-hidden bg-slate-50 dark:bg-black/20">
+                    <!-- Placeholder for dynamic graph -->
+                    <div class="absolute inset-0 flex items-center justify-center">
+                        <svg class="w-full h-full opacity-40 dark:opacity-20" viewbox="0 0 100 100">
+                            <path d="M 10 80 Q 50 10 90 40" fill="none" stroke="#ec5b13" stroke-width="2"></path>
+                            <line stroke="#0ea5e9" stroke-width="1" x1="30" x2="70" y1="20" y2="60"></line>
+                        </svg>
+                    </div>
+                    <div class="absolute bottom-2 left-2 text-[10px] font-mono text-slate-400">f'(x) = 2x + cos(x)</div>
+                </div>
+            </div>
+        </aside>
+        <!-- Center: Live Handwriting Canvas -->
+        <section class="col-span-12 lg:col-span-7 flex flex-col gap-4">
+            <div
+                class="flex-grow bg-white dark:bg-[#1a110b] border border-slate-200 dark:border-primary/20 rounded-xl shadow-inner canvas-grid relative overflow-hidden">
+                <div
+                    class="absolute top-4 left-6 flex items-center gap-4 bg-white/90 dark:bg-background-dark/90 px-3 py-2 rounded-lg border border-slate-200 dark:border-primary/20 backdrop-blur-sm shadow-sm z-10">
+                    <div class="flex items-center gap-2 pr-4 border-r border-slate-200 dark:border-primary/20">
+                        <button class="w-8 h-8 rounded bg-primary text-white flex items-center justify-center"><span
+                                class="material-symbols-outlined text-sm">edit</span></button>
+                        <button
+                            class="w-8 h-8 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-primary/10 flex items-center justify-center"><span
+                                class="material-symbols-outlined text-sm">ink_eraser</span></button>
+                        <button
+                            class="w-8 h-8 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-primary/10 flex items-center justify-center"><span
+                                class="material-symbols-outlined text-sm">gesture</span></button>
+                    </div>
+                    <div class="flex gap-2">
+                        <div class="w-6 h-6 rounded-full bg-slate-900 border-2 border-white cursor-pointer"></div>
+                        <div class="w-6 h-6 rounded-full bg-primary border-2 border-white cursor-pointer shadow-sm">
+                        </div>
+                        <div class="w-6 h-6 rounded-full bg-secondary border-2 border-white cursor-pointer"></div>
+                    </div>
+                </div>
+                <div class="absolute top-4 right-6 flex items-center gap-2 z-10">
+                    <button
+                        class="px-3 py-1.5 bg-slate-100 dark:bg-primary/10 border border-slate-200 dark:border-primary/30 rounded-lg text-[10px] font-mono font-bold flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span> RECORD SESSION
+                    </button>
+                </div>
+                <!-- Handwriting Representation -->
+                <div
+                    class="absolute inset-0 p-20 flex flex-col items-center justify-center opacity-80 pointer-events-none">
+                    <div class="max-w-md space-y-8">
+                        <div class="text-4xl font-display text-slate-800 dark:text-slate-200 italic opacity-60">
+                            Find the derivative of <br />
+                            f(x) = sin(x²) + 3x
+                        </div>
+                        <div class="text-3xl font-display text-primary italic border-l-4 border-primary/40 pl-6 py-2">
+                            f'(x) = cos(x²) · 2x + 3
+                        </div>
+                    </div>
+                </div>
+                <div class="absolute bottom-4 left-6 right-6 flex justify-between items-center pointer-events-none">
+                    <div class="text-[10px] font-mono text-slate-400">LAYER: SCRATCHPAD_01</div>
+                    <div class="text-[10px] font-mono text-slate-400">RESOLUTION: 5080 LPI</div>
+                </div>
+            </div>
+            <!-- Bottom Actions Bar -->
+            <div
+                class="flex items-center justify-between gap-4 p-4 bg-white dark:bg-background-dark border border-slate-200 dark:border-primary/20 rounded-xl">
+                <div class="flex gap-2">
+                    <button
+                        class="px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-sm font-bold hover:bg-primary/20 transition-all">Step-by-Step
+                        Hint</button>
+                    <button
+                        class="px-4 py-2 bg-secondary/10 text-secondary border border-secondary/20 rounded-lg text-sm font-bold hover:bg-secondary/20 transition-all">Identify
+                        Error</button>
+                    <button
+                        class="px-4 py-2 bg-slate-100 dark:bg-primary/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-primary/20 rounded-lg text-sm font-bold hover:bg-slate-200 transition-all">Synthesize
+                        Proof</button>
+                </div>
+                <div class="flex gap-2">
+                    <button
+                        class="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-sm font-bold flex items-center gap-2">
+                        <span class="material-symbols-outlined text-sm">function</span>
+                        Convert to LaTeX
+                    </button>
+                </div>
+            </div>
+        </section>
+        <!-- Right Side: AI Tutor & OCR Panel -->
+        <aside class="col-span-12 lg:col-span-3 flex flex-col gap-4 overflow-y-auto">
+            <!-- OCR STREAM -->
+            <div class="bg-slate-900 dark:bg-black border border-slate-700 rounded-xl p-4 h-1/3 flex flex-col">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-[10px] font-mono text-secondary font-bold tracking-widest">OCR REAL-TIME
+                        STREAM</span>
+                    <span class="w-2 h-2 rounded-full bg-secondary shadow-[0_0_8px_#0ea5e9]"></span>
+                </div>
+                <div
+                    class="bg-black/50 border border-secondary/20 rounded-lg p-3 flex-grow font-mono text-xs text-secondary/80 overflow-y-auto leading-relaxed">
+                    <div class="flex gap-2 mb-2">
+                        <span class="text-secondary/40">14:02:11</span>
+                        <span class="text-white">\text{Input detected: } f(x) = \sin(x^2) + 3x</span>
+                    </div>
+                    <div class="flex gap-2 mb-2">
+                        <span class="text-secondary/40">14:02:15</span>
+                        <span class="text-white">\text{Processing Chain Rule...}</span>
+                    </div>
+                    <div class="flex gap-2 mb-2">
+                        <span class="text-secondary/40">14:02:18</span>
+                        <span class="text-primary font-bold">\text{Parsed: } f'(x) = 2x\cos(x^2) + 3</span>
+                    </div>
+                </div>
+            </div>
+            <!-- AI TUTOR: THE ANALYST -->
+            <div
+                class="bg-white dark:bg-background-dark border border-primary/30 rounded-xl p-5 flex-grow flex flex-col relative overflow-hidden blueprint-grid">
+                <div class="absolute top-0 right-0 p-2">
+                    <span class="material-symbols-outlined text-primary/20 text-6xl rotate-12">robot_2</span>
+                </div>
+                <div class="relative z-10 flex flex-col h-full">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div
+                            class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg">
+                            <span class="material-symbols-outlined">psychology</span>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-slate-900 dark:text-white leading-none">The Analyst</h4>
+                            <span class="text-[10px] font-mono text-primary uppercase">Active Analysis</span>
+                        </div>
+                    </div>
+                    <div class="space-y-4 flex-grow">
+                        <div
+                            class="bg-slate-50 dark:bg-primary/5 border border-slate-200 dark:border-primary/20 p-3 rounded-lg">
+                            <p class="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Step-by-Step
+                                Guidance:</p>
+                            <p class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed italic">
+                                "Correct application of the Chain Rule. You correctly identified $u = x^2$ and $du/dx =
+                                2x$. Now, try evaluating the derivative at $x = \sqrt{\pi}$ to find the slope of the
+                                tangent line."
+                            </p>
+                        </div>
+                        <div class="border-l-2 border-secondary/50 pl-4 py-1">
+                            <p class="text-[10px] font-mono text-secondary uppercase font-bold">Next Recommended Step
+                            </p>
+                            <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Practice Second Derivatives:
+                                $f''(x)$</p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 mt-4">
+                            <div
+                                class="bg-slate-100 dark:bg-primary/10 p-2 rounded border border-slate-200 dark:border-primary/10 text-center">
+                                <span class="text-[10px] text-slate-500 block">Accuracy</span>
+                                <span class="text-lg font-bold text-primary font-mono">98.2%</span>
+                            </div>
+                            <div
+                                class="bg-slate-100 dark:bg-primary/10 p-2 rounded border border-slate-200 dark:border-primary/10 text-center">
+                                <span class="text-[10px] text-slate-500 block">Focus Rate</span>
+                                <span class="text-lg font-bold text-secondary font-mono">High</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-auto pt-4 border-t border-slate-100 dark:border-primary/10">
+                        <div class="relative">
+                            <input
+                                class="w-full bg-slate-100 dark:bg-primary/10 border-none rounded-xl py-2 px-4 text-xs focus:ring-1 focus:ring-primary placeholder:text-slate-400 dark:placeholder:text-slate-600"
+                                placeholder="Ask The Analyst..." type="text" />
+                            <button class="absolute right-2 top-1.5 text-primary">
+                                <span class="material-symbols-outlined text-sm">send</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+    <!-- Footer Meta-Data -->
+    <footer class="max-w-[1600px] mx-auto px-6 py-2 flex items-center justify-between opacity-50">
+        <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">
+            System: Stable | Latency: 12ms | Memory: 4.2GB / 16GB
+        </div>
+        <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">
+            © 2024 Blueprint Technical Lab | Analyst Engine 4.0
+        </div>
+    </footer>
+</body>
+
+</html>
