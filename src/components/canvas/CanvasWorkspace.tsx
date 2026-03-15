@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppState } from '@/lib/app-state';
+import { type StoredSession, saveLatestSession } from '@/lib/sessionStore';
 
 export type CanvasTool = 'pen' | 'eraser';
 
@@ -31,13 +32,6 @@ interface CanvasWorkspaceProps {
 export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps) {
   const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError, tutorActionRequests } =
     useAppState();
-
-export default function CanvasWorkspace({
-  snapshotIntervalMs = 3000,
-  onSnapshot,
-  onStrokeOutput,
-}: CanvasWorkspaceProps) {
-  const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError } = useAppState();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -173,7 +167,7 @@ export default function CanvasWorkspace({
 
       setStrokes((prev) => {
         const now = Date.now();
-        const updatedStrokes = previousStrokes.map((stroke) =>
+        const updated = prev.map((stroke) =>
           stroke.id === completedStrokeId ? { ...stroke, endedAt: now, updatedAt: now } : stroke,
         );
 
@@ -317,7 +311,11 @@ export default function CanvasWorkspace({
       const next = sortedTimeline[index + 1];
       const gap = next ? Math.max(40, (next.startedAt - current.startedAt) / replaySpeed) : 250;
 
-  const latestSnapshot = canvasSnapshotEvents[canvasSnapshotEvents.length - 1];
+      replayTimerRef.current = window.setTimeout(() => runStep(index + 1), gap);
+    };
+
+    runStep(0);
+  }, [recordTimeline, redrawStrokes, replaySpeed, stopReplay]);
 
   return (
     <div className="flex flex-col gap-4 h-full">
