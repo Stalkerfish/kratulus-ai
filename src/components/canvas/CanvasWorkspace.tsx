@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useAppState } from '@/lib/app-state';
+import { useAppDispatch, useAppState } from '@/lib/app-state';
+import type { CanvasSnapshotEvent, OcrRequestPayload } from '@/lib/contracts';
+import { requestOcrParse } from '@/lib/ocrClient';
 import { type StoredSession, saveLatestSession } from '@/lib/sessionStore';
 
 export type CanvasTool = 'pen' | 'eraser';
@@ -30,17 +32,9 @@ interface CanvasWorkspaceProps {
 }
 
 export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps) {
-  const {
-    canvasSnapshotEvents,
-    confirmedExpression,
-    latestOcrParse,
-    ocrStatus,
-    ocrError,
-    tutorActionRequests,
-    tutorConversation,
-    dispatch,
-    invokeTutor,
-  } = useAppState();
+  const dispatch = useAppDispatch();
+  const { canvasSnapshotEvents, confirmedExpression, latestOcrParse, ocrStatus, ocrError, tutorActionRequests } =
+    useAppState();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -56,6 +50,9 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
   const [replayProgress, setReplayProgress] = useState(0);
 
   const activeStrokeIdRef = useRef<string | null>(null);
+  const snapshotTimerRef = useRef<number | null>(null);
+  const lastScheduledStrokeCountRef = useRef<number>(0);
+  const lastScheduledUpdatedAtRef = useRef<number>(0);
 
   const latestSnapshot = canvasSnapshotEvents[canvasSnapshotEvents.length - 1];
   const sessionExpression = confirmedExpression ?? initialSession?.confirmedExpression ?? null;
@@ -105,6 +102,76 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
     setStrokes(initialSession.strokeTimeline);
     setRecordTimeline(initialSession.strokeTimeline);
   }, [initialSession]);
+
+  const runOcrCycle = useCallback(
+    async (payload: OcrRequestPayload) => {
+      const snapshotEvent: CanvasSnapshotEvent = {
+        id: payload.snapshotId,
+        timestamp: new Date().toLocaleTimeString([], {
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }),
+        label: payload.trigger === 'stroke-complete' ? 'Stroke completed, OCR queued' : 'Inactivity window elapsed',
+        strokeCount: payload.strokeCount,
+        status: 'processing',
+      };
+
+      dispatch({ type: 'ocr/cycleStarted', payload: { snapshot: snapshotEvent } });
+
+      try {
+        const parse = await requestOcrParse(payload);
+        dispatch({ type: 'ocr/cycleSucceeded', payload: { parse } });
+      } catch (error) {
+        dispatch({
+          type: 'ocr/cycleFailed',
+          payload: { error: error instanceof Error ? error.message : 'OCR parse failed' },
+        });
+      }
+    },
+    [dispatch],
+  );
+
+  const scheduleSnapshot = useCallback(
+    (reason: OcrRequestPayload['trigger'], debounceMs: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        return;
+      }
+
+      if (snapshotTimerRef.current) {
+        window.clearTimeout(snapshotTimerRef.current);
+      }
+
+      snapshotTimerRef.current = window.setTimeout(() => {
+        const completedStrokes = strokes.filter((stroke) => stroke.endedAt);
+        const latestUpdatedAt = completedStrokes.reduce((latest, stroke) => Math.max(latest, stroke.updatedAt), 0);
+
+        if (
+          completedStrokes.length === lastScheduledStrokeCountRef.current &&
+          latestUpdatedAt === lastScheduledUpdatedAtRef.current
+        ) {
+          return;
+        }
+
+        lastScheduledStrokeCountRef.current = completedStrokes.length;
+        lastScheduledUpdatedAtRef.current = latestUpdatedAt;
+
+        const snapshotId = `snap_${Date.now()}`;
+        runOcrCycle({
+          snapshotId,
+          strokeCount: completedStrokes.length,
+          inkModel: activeTool,
+          canvasSize: { width: canvas.clientWidth, height: canvas.clientHeight },
+          latestStrokeAt: latestUpdatedAt || null,
+          sessionId: initialSession?.id ?? 'latest',
+          trigger: reason,
+        });
+      }, debounceMs);
+    },
+    [activeTool, initialSession?.id, runOcrCycle, strokes],
+  );
 
   const redrawStrokes = useCallback((ctx: CanvasRenderingContext2D, allStrokes: StrokeEvent[]) => {
     const canvas = canvasRef.current;
@@ -226,6 +293,8 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
 
         return updated;
       });
+
+      scheduleSnapshot('stroke-complete', 800);
     };
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -275,6 +344,8 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
         redrawStrokes(context, nextStrokes);
         return nextStrokes;
       });
+
+      scheduleSnapshot('inactivity', 1200);
     };
 
     const handlePointerUp = (event: PointerEvent) => finalizeStroke(event.pointerId);
@@ -293,12 +364,15 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
       canvas.removeEventListener('pointerleave', handlePointerUp);
       canvas.removeEventListener('pointercancel', handlePointerCancel);
     };
-  }, [activeColor, activeTool, isRecording, isReplayActive, redrawStrokes]);
+  }, [activeColor, activeTool, isRecording, isReplayActive, redrawStrokes, scheduleSnapshot]);
 
   useEffect(
     () => () => {
       if (replayTimerRef.current) {
         window.clearTimeout(replayTimerRef.current);
+      }
+      if (snapshotTimerRef.current) {
+        window.clearTimeout(snapshotTimerRef.current);
       }
     },
     [],

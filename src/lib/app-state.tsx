@@ -58,6 +58,12 @@ interface AppStateContextValue extends AppState {
   invokeTutor: (payload: TutorRequestPayload) => Promise<TutorResponsePayload>;
 }
 
+type AppAction =
+  | { type: 'ocr/cycleStarted'; payload: { snapshot: CanvasSnapshotEvent } }
+  | { type: 'ocr/cycleSucceeded'; payload: { parse: OcrParseResult } }
+  | { type: 'ocr/cycleFailed'; payload: { error: string } }
+  | { type: 'ocr/confirmedExpressionSet'; payload: { latex: string; note?: string } };
+
 const initialState: AppState = {
   canvasSnapshotEvents: [
     {
@@ -67,155 +73,69 @@ const initialState: AppState = {
       strokeCount: 42,
       status: 'captured',
     },
-    {
-      id: 'snap_002',
-      timestamp: '14:02:15',
-      label: 'Chain rule branch isolated',
-      strokeCount: 57,
-      status: 'processing',
-    },
-    {
-      id: 'snap_003',
-      timestamp: '14:02:18',
-      label: 'Derivative parse stabilized',
-      strokeCount: 64,
-      status: 'parsed',
-    },
   ],
-  latestOcrParse: {
-    latex: "f'(x) = 2x\\cos(x^2) + 3",
-    plainText: 'f prime of x equals 2x cosine of x squared plus 3',
-    confidence: 0.982,
-    sourceSnapshotId: 'snap_003',
-    updatedAt: '14:02:18',
-  },
-  ocrStatus: 'success',
-  ocrActiveRequest: { requestId: 'ocr_req_001', snapshotId: 'snap_003' },
-  confirmedExpression: {
-    latex: "f'(x) = 2x\\cos(x^2) + 3",
-    confirmedAt: '14:02:22',
-    note: 'Confirmed after OCR confidence exceeded threshold.',
-  },
+  latestOcrParse: null,
+  ocrStatus: 'idle',
+  confirmedExpression: null,
   tutorConversation: [
     {
       id: 'msg_001',
       role: 'tutor',
-      content:
-        'Correct application of the Chain Rule. You identified u = x² and du/dx = 2x.',
+      content: 'Correct application of the Chain Rule. You identified u = x² and du/dx = 2x.',
       createdAt: '14:02:30',
     },
-    {
-      id: 'msg_002',
-      role: 'tutor',
-      content: 'Try evaluating the derivative at x = √π to find the slope of the tangent line.',
-      createdAt: '14:02:33',
-    },
   ],
-  tutorActionRequests: [
-    {
-      id: 'act_001',
-      type: 'step_hint',
-      status: 'completed',
-      requestedAt: '14:02:28',
-      detail: 'Show guidance for derivative evaluation at a point.',
-    },
-  ],
+  tutorActionRequests: [],
   tutorStatus: 'idle',
 };
 
-function nowTimeLabel() {
-  return new Date().toLocaleTimeString([], { hour12: false });
+function withNowTime() {
+  return new Date().toLocaleTimeString([], {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
 
-function tutorActionCopy(type: TutorActionRequest['type']) {
-  switch (type) {
-    case 'step_hint':
-      return 'Break the expression into nested functions and differentiate from the outside in.';
-    case 'identify_error':
-      return 'Common error: forgetting to multiply by the derivative of the inner function.';
-    case 'synthesize_proof':
-      return 'A concise proof can proceed by defining helper substitutions and applying known differentiation rules.';
-    case 'evaluate_point':
-      return 'Substitute the target x-value after simplification to reduce arithmetic mistakes.';
-    default:
-      return 'I can help with the next step.';
-  }
-}
-
-async function invokeTutorClient(payload: TutorRequestPayload): Promise<TutorResponsePayload> {
-  await new Promise((resolve) => window.setTimeout(resolve, 300));
-
-  if (!payload.confirmedExpressionLatex) {
-    throw new Error('Missing confirmed expression.');
-  }
-
-  const content = payload.requestedAction
-    ? tutorActionCopy(payload.requestedAction)
-    : `Given ${payload.confirmedExpressionLatex}, focus on ${
-        payload.conversation[payload.conversation.length - 1]?.content ?? 'the next simplification step'
-      }.`;
-
-  return {
-    message: {
-      id: `msg_${crypto.randomUUID()}`,
-      role: 'tutor',
-      content,
-      createdAt: nowTimeLabel(),
-    },
-  };
-}
-
-function appReducer(state: AppState, action: AppAction): AppState {
+function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
-    case 'tutor/studentMessageAppended': {
+    case 'ocr/cycleStarted': {
       return {
         ...state,
-        tutorConversation: [...state.tutorConversation, action.payload],
+        ocrStatus: 'loading',
+        ocrError: undefined,
+        canvasSnapshotEvents: [...state.canvasSnapshotEvents, action.payload.snapshot],
       };
     }
-    case 'tutor/requestStarted': {
-      const nextRequest: TutorActionRequest = {
-        id: action.payload.requestId,
-        type: action.payload.actionType,
-        status: 'running',
-        requestedAt: nowTimeLabel(),
-        detail: action.payload.detail,
-      };
-
+    case 'ocr/cycleSucceeded': {
       return {
         ...state,
-        tutorStatus: 'loading',
-        tutorError: undefined,
-        tutorActionRequests: [...state.tutorActionRequests, nextRequest],
+        ocrStatus: 'success',
+        ocrError: undefined,
+        latestOcrParse: action.payload.parse,
+        canvasSnapshotEvents: state.canvasSnapshotEvents.map((event) =>
+          event.id === action.payload.parse.sourceSnapshotId
+            ? { ...event, status: 'parsed', label: 'OCR parse received' }
+            : event,
+        ),
       };
     }
-    case 'tutor/requestSucceeded': {
-      const updatedRequests = action.payload.requestId
-        ? state.tutorActionRequests.map((request) =>
-            request.id === action.payload.requestId ? ({ ...request, status: 'completed' } as TutorActionRequest) : request,
-          )
-        : state.tutorActionRequests;
-
+    case 'ocr/cycleFailed': {
       return {
         ...state,
-        tutorStatus: 'success',
-        tutorError: undefined,
-        tutorActionRequests: updatedRequests,
-        tutorConversation: [...state.tutorConversation, action.payload.response.message],
+        ocrStatus: 'error',
+        ocrError: action.payload.error,
       };
     }
-    case 'tutor/requestFailed': {
-      const updatedRequests = action.payload.requestId
-        ? state.tutorActionRequests.map((request) =>
-            request.id === action.payload.requestId ? ({ ...request, status: 'rejected' } as TutorActionRequest) : request,
-          )
-        : state.tutorActionRequests;
-
+    case 'ocr/confirmedExpressionSet': {
       return {
         ...state,
-        tutorStatus: 'error',
-        tutorError: action.payload.error,
-        tutorActionRequests: updatedRequests,
+        confirmedExpression: {
+          latex: action.payload.latex,
+          note: action.payload.note,
+          confirmedAt: withNowTime(),
+        },
       };
     }
     default:
@@ -223,21 +143,18 @@ function appReducer(state: AppState, action: AppAction): AppState {
   }
 }
 
-const AppStateContext = createContext<AppStateContextValue | null>(null);
+const AppStateContext = createContext<AppState | null>(null);
+const AppDispatchContext = createContext<React.Dispatch<AppAction> | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState);
+  const [state, dispatch] = useReducer(reducer, initialState);
+  const stableState = useMemo(() => state, [state]);
 
-  const value = useMemo<AppStateContextValue>(
-    () => ({
-      ...state,
-      dispatch,
-      invokeTutor: invokeTutorClient,
-    }),
-    [state],
+  return (
+    <AppDispatchContext.Provider value={dispatch}>
+      <AppStateContext.Provider value={stableState}>{children}</AppStateContext.Provider>
+    </AppDispatchContext.Provider>
   );
-
-  return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }
 
 export function useAppState() {
@@ -257,4 +174,12 @@ export function useAppStateActions() {
     dispatch: context.dispatch,
     invokeTutor: context.invokeTutor,
   };
+}
+
+export function useAppDispatch() {
+  const dispatch = useContext(AppDispatchContext);
+  if (!dispatch) {
+    throw new Error('useAppDispatch must be used within an AppStateProvider');
+  }
+  return dispatch;
 }
