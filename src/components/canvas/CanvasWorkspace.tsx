@@ -1,31 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useAppDispatch, useAppState } from '@/lib/app-state';
-import type { CanvasSnapshotEvent, OcrRequestPayload } from '@/lib/contracts';
+import { useAppState } from '@/lib/app-state';
+import type { OcrRequestPayload, StrokeEvent, CanvasTool } from '@/lib/contracts';
 import { requestOcrParse } from '@/lib/ocrClient';
-import { requestTutorResponse } from '@/lib/tutorClient';
 import { type StoredSession, saveLatestSession } from '@/lib/sessionStore';
-
-export type CanvasTool = 'pen' | 'eraser';
-
-export interface StrokePoint {
-  x: number;
-  y: number;
-  pressure: number;
-  timestamp: number;
-}
-
-export interface StrokeEvent {
-  id: string;
-  points: StrokePoint[];
-  tool: CanvasTool;
-  color: string;
-  startedAt: number;
-  updatedAt: number;
-  endedAt?: number;
-}
-
 const AVAILABLE_COLORS = ['#0f172a', '#f59e0b', '#6d28d9'];
 const REPLAY_SPEED_STORAGE_KEY = 'kratulus.replaySpeed';
 
@@ -66,6 +45,67 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
 
   const latestSnapshot = canvasSnapshotEvents[canvasSnapshotEvents.length - 1];
   const sessionExpression = confirmedExpression ?? initialSession?.confirmedExpression ?? null;
+
+  const scheduleSnapshot = useCallback(
+    (trigger: OcrRequestPayload['trigger'], delayMs: number) => {
+      if (snapshotTimerRef.current) {
+        window.clearTimeout(snapshotTimerRef.current);
+      }
+
+      snapshotTimerRef.current = window.setTimeout(async () => {
+        const latestStroke = strokes[strokes.length - 1];
+        const latestStrokeAt = latestStroke?.updatedAt ?? null;
+
+        if (
+          lastScheduledStrokeCountRef.current === strokes.length &&
+          lastScheduledUpdatedAtRef.current === (latestStrokeAt ?? 0)
+        ) {
+          return;
+        }
+
+        lastScheduledStrokeCountRef.current = strokes.length;
+        lastScheduledUpdatedAtRef.current = latestStrokeAt ?? 0;
+
+        const stageBounds = stageRef.current?.getBoundingClientRect();
+        const payload: OcrRequestPayload = {
+          snapshotId: `snap_${crypto.randomUUID()}`,
+          strokeCount: strokes.length,
+          strokes,
+          inkModel: 'mathpix',
+          canvasSize: {
+            width: Math.round(stageBounds?.width ?? 0),
+            height: Math.round(stageBounds?.height ?? 0),
+          },
+          sessionId: initialSession?.id ?? 'live-session',
+          latestStrokeAt,
+          trigger,
+        };
+
+        const requestId = `ocr_${crypto.randomUUID()}`;
+        dispatch({
+          type: 'ocr/requestStarted',
+          payload: { requestId, snapshotId: payload.snapshotId, strokeCount: payload.strokeCount },
+        });
+
+        try {
+          const parse = await requestOcrParse(payload);
+          dispatch({
+            type: 'ocr/requestSucceeded',
+            payload: { requestId, parse },
+          });
+        } catch (error) {
+          dispatch({
+            type: 'ocr/requestFailed',
+            payload: {
+              requestId,
+              error: error instanceof Error ? error.message : 'OCR conversion failed',
+            },
+          });
+        }
+      }, delayMs);
+    },
+    [dispatch, initialSession?.id, strokes],
+  );
 
   const appendTutorFeedback = useCallback(
     async (type: 'step_hint' | 'identify_error' | 'synthesize_proof' | 'evaluate_point', detail: string) => {
@@ -316,7 +356,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
       canvas.removeEventListener('pointerleave', handlePointerUp);
       canvas.removeEventListener('pointercancel', handlePointerCancel);
     };
-  }, [activeColor, activeTool, isRecording, isReplayActive, redrawStrokes]);
+  }, [activeColor, activeTool, isRecording, isReplayActive, redrawStrokes, scheduleSnapshot]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -550,10 +590,19 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
         <div className="text-xs font-mono uppercase text-slate-500">Progress {replayProgress.toFixed(0)}%</div>
         {isReplayActive ? (
           <button
+            type="button"
             onClick={stopReplay}
             className="ml-auto px-3 py-1 border border-slate-200 dark:border-primary/20 rounded text-xs font-bold"
           >
             Stop Replay
+          </button>
+        ) : recordTimeline.length > 0 ? (
+          <button
+            type="button"
+            onClick={handleReplay}
+            className="ml-auto px-3 py-1 bg-primary text-white rounded text-xs font-bold hover:bg-primary/90 transition-colors"
+          >
+            Play Replay
           </button>
         ) : null}
         <div className="text-xs font-mono uppercase text-slate-400 ml-auto">Recorded strokes {recordTimeline.length}</div>

@@ -22,9 +22,29 @@ export interface ConfirmedExpression {
   note?: string;
 }
 
+export type CanvasTool = 'pen' | 'eraser';
+
+export interface StrokePoint {
+  x: number;
+  y: number;
+  pressure: number;
+  timestamp: number;
+}
+
+export interface StrokeEvent {
+  id: string;
+  points: StrokePoint[];
+  tool: CanvasTool;
+  color: string;
+  startedAt: number;
+  updatedAt: number;
+  endedAt?: number;
+}
+
 export interface OcrRequestPayload {
   snapshotId: string;
   strokeCount: number;
+  strokes: StrokeEvent[];
   inkModel: string;
   canvasSize: {
     width: number;

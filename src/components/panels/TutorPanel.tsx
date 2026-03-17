@@ -1,12 +1,10 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { useAppDispatch, useAppState } from '@/lib/app-state';
-import { requestTutorResponse } from '@/lib/tutorClient';
+import { useAppState } from '@/lib/app-state';
 
 export default function TutorPanel() {
   const { tutorConversation, tutorActionRequests, tutorStatus, tutorError, confirmedExpression, dispatch, invokeTutor } = useAppState();
-  const dispatch = useAppDispatch();
   const [input, setInput] = useState('');
 
   const canSend = useMemo(() => input.trim().length > 0 && Boolean(confirmedExpression?.latex), [confirmedExpression?.latex, input]);

@@ -3,11 +3,14 @@ from __future__ import annotations
 from statistics import mean
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
+from app.services.mathpix_service import MathpixService
+from app.services.sympy_pipeline import parse_corrected_latex, LatexParseError
 
 router = APIRouter(prefix="/ocr", tags=["ocr"])
+mathpix_service = MathpixService()
 
 
 class Stroke(BaseModel):
@@ -70,23 +73,56 @@ def _build_fallback_ast(stroke_count: int, mean_points_per_stroke: float) -> Par
     )
 
 
+def _map_sympy_ast_to_model(ast_dict: dict[str, Any]) -> ParsedAstNode:
+    """Recursively map SymPy AST dictionary entries to ParsedAstNode models."""
+    return ParsedAstNode(
+        type=ast_dict.get("type", "Unknown"),
+        value=ast_dict.get("str"),
+        children=[_map_sympy_ast_to_model(c) for c in ast_dict.get("children", [])]
+    )
+
+
 @router.post("/process-ink", response_model=ProcessInkResponse)
-def process_ink(payload: ProcessInkRequest) -> ProcessInkResponse:
+async def process_ink(payload: ProcessInkRequest) -> ProcessInkResponse:
+    # 1. Stroke Analysis for fallback/metadata
     point_counts = [len(stroke.x) for stroke in payload.strokes]
     stroke_count = len(payload.strokes)
-    avg_points = mean(point_counts)
+    avg_points = mean(point_counts) if point_counts else 0
 
+    # 2. Call Mathpix Recognition
+    try:
+        strokes_payload = [s.model_dump() for s in payload.strokes]
+        data = await mathpix_service.recognize_strokes(strokes_payload, payload.image_snapshot)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"OCR service error: {exc}")
+
+    # 3. Map Mathpix Output
+    latex_styled = data.get("latex_styled", "")
     mathpix_output = MathpixNormalizedOutput(
-        latex_styled="\\text{ink}_%d" % stroke_count,
-        latex_simplified="ink_%d" % stroke_count,
-        text="ink input",
-        confidence=max(0.1, min(0.99, avg_points / 50.0)),
+        latex_styled=latex_styled,
+        latex_simplified=data.get("latex", ""),
+        text=data.get("text", ""),
+        confidence=data.get("confidence", 0.0),
         detection_map={
             "strokes": stroke_count,
-            "snapshot_present": bool(payload.image_snapshot),
+            "mathpix_id": data.get("id"),
         },
     )
 
+    # 4. Attempt to generate AST via SymPy
+    try:
+        if latex_styled:
+            _, sympy_ast, _ = parse_corrected_latex(latex_styled)
+            ast_result = _map_sympy_ast_to_model(sympy_ast)
+        else:
+            ast_result = _build_fallback_ast(stroke_count, avg_points)
+    except (LatexParseError, Exception):
+        ast_result = _build_fallback_ast(stroke_count, avg_points)
+
+    # 5. Build individual node confidence (simulated from regions if available, or stroke-based)
+    # For now, keeping the stroke-based simulation as a primary feedback loop
     confidence_nodes = [
         ConfidenceAwareMathNode(
             node_id=f"stroke-{idx}",
@@ -98,6 +134,6 @@ def process_ink(payload: ProcessInkRequest) -> ProcessInkResponse:
 
     return ProcessInkResponse(
         mathpix=mathpix_output,
-        ast=_build_fallback_ast(stroke_count, avg_points),
+        ast=ast_result,
         confidence_nodes=confidence_nodes,
     )

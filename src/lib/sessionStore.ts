@@ -1,5 +1,4 @@
-import type { ConfirmedExpression, TutorActionRequest } from '@/lib/contracts';
-import type { StrokeEvent } from '@/components/canvas/CanvasWorkspace';
+import type { ConfirmedExpression, StrokeEvent, TutorActionRequest } from '@/lib/contracts';
 
 export interface StoredSession {
   id: string;

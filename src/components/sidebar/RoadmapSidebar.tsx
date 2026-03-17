@@ -62,7 +62,7 @@ export default function RoadmapSidebar() {
               <line stroke="#0ea5e9" strokeWidth="1" x1="30" x2="70" y1="20" y2="60"></line>
             </svg>
           </div>
-          <div className="absolute bottom-2 left-2 text-[10px] font-mono text-slate-400">f'(x) = 2x + cos(x)</div>
+          <div className="absolute bottom-2 left-2 text-[10px] font-mono text-slate-400">f&apos;(x) = 2x + cos(x)</div>
         </div>
       </div>
     </aside>

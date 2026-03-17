@@ -19,6 +19,7 @@ def _ast_from_sympy(expr: Basic) -> dict[str, Any]:
         "type": expr.__class__.__name__,
         "repr": srepr(expr),
         "str": str(expr),
+        "children": [_ast_from_sympy(arg) for arg in expr.args],
     }
 
 

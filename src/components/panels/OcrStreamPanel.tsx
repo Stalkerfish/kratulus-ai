@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { useAppDispatch, useAppState } from '@/lib/app-state';
+import { useAppState } from '@/lib/app-state';
 
 const statusColor = {
   captured: 'text-slate-300',
@@ -10,9 +10,15 @@ const statusColor = {
 };
 
 export default function OcrStreamPanel() {
-  const dispatch = useAppDispatch();
-  const { canvasSnapshotEvents, latestOcrParse, ocrStatus, ocrError, confirmedExpression } = useAppState();
+  const { canvasSnapshotEvents, latestOcrParse, ocrStatus, ocrError, confirmedExpression, dispatch } = useAppState();
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const expressionRef = useRef<HTMLTextAreaElement | null>(null);
+
+  React.useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [canvasSnapshotEvents, latestOcrParse]);
 
   const handleConfirmExpression = () => {
     const normalized = expressionRef.current?.value.trim() ?? '';
@@ -24,6 +30,7 @@ export default function OcrStreamPanel() {
       type: 'ocr/confirmedExpressionSet',
       payload: {
         latex: normalized,
+        confirmedAt: new Date().toLocaleTimeString([], { hour12: false }),
         note: latestOcrParse ? `Confirmed from snapshot ${latestOcrParse.sourceSnapshotId}` : 'Manually confirmed by user',
       },
     });
@@ -35,7 +42,10 @@ export default function OcrStreamPanel() {
         <span className="text-[10px] font-mono text-secondary font-bold tracking-widest leading-none">OCR REAL-TIME STREAM</span>
         <span className="w-2 h-2 rounded-full bg-secondary shadow-[0_0_8px_#0ea5e9]" />
       </div>
-      <div className="bg-black/50 border border-secondary/20 rounded-lg p-3 flex-grow font-mono text-xs text-secondary/80 overflow-y-auto leading-relaxed">
+      <div
+        ref={scrollRef}
+        className="bg-black/50 border border-secondary/20 rounded-lg p-3 flex-grow font-mono text-xs text-secondary/80 overflow-y-auto leading-relaxed"
+      >
         {ocrStatus === 'loading' && <div className="text-secondary">Waiting for OCR parse...</div>}
         {ocrStatus === 'error' && <div className="text-red-300">OCR error: {ocrError ?? 'Unknown error'}</div>}
 

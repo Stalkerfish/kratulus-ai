@@ -45,13 +45,11 @@ type AppAction =
         response: TutorResponsePayload;
       };
     }
-  | {
-      type: 'tutor/requestFailed';
-      payload: {
-        requestId?: string;
-        error: string;
-      };
-    };
+  | { type: 'tutor/requestFailed'; payload: { requestId?: string; error: string } }
+  | { type: 'ocr/requestStarted'; payload: { requestId: string; snapshotId: string; strokeCount: number } }
+  | { type: 'ocr/requestSucceeded'; payload: { requestId: string; parse: OcrParseResult } }
+  | { type: 'ocr/requestFailed'; payload: { requestId: string; error: string } }
+  | { type: 'ocr/confirmedExpressionSet'; payload: ConfirmedExpression };
 
 interface AppStateContextValue extends AppState {
   dispatch: React.Dispatch<AppAction>;
@@ -59,45 +57,12 @@ interface AppStateContextValue extends AppState {
 }
 
 const initialState: AppState = {
-  canvasSnapshotEvents: [
-    {
-      id: 'snap_001',
-      timestamp: '14:02:11',
-      label: 'Input detected',
-      strokeCount: 42,
-      status: 'captured',
-    },
-  ],
-  latestOcrParse: {
-    latex: "f'(x) = 2x\\cos(x^2) + 3",
-    plainText: 'f prime of x equals 2x cosine of x squared plus 3',
-    confidence: 0.982,
-    sourceSnapshotId: 'snap_003',
-    updatedAt: '14:02:18',
-  },
-  ocrStatus: 'success',
-  confirmedExpression: {
-    latex: "f'(x) = 2x\\cos(x^2) + 3",
-    confirmedAt: '14:02:22',
-    note: 'Confirmed after OCR confidence exceeded threshold.',
-  },
-  tutorConversation: [
-    {
-      id: 'msg_001',
-      role: 'tutor',
-      content: 'Correct application of the Chain Rule. You identified u = x² and du/dx = 2x.',
-      createdAt: '14:02:30',
-    },
-  ],
-  tutorActionRequests: [
-    {
-      id: 'act_001',
-      type: 'step_hint',
-      status: 'completed',
-      requestedAt: '14:02:28',
-      detail: 'Show guidance for derivative evaluation at a point.',
-    },
-  ],
+  canvasSnapshotEvents: [],
+  latestOcrParse: null,
+  ocrStatus: 'idle',
+  confirmedExpression: null,
+  tutorConversation: [],
+  tutorActionRequests: [],
   tutorStatus: 'idle',
 };
 
@@ -194,6 +159,45 @@ function appReducer(state: AppState, action: AppAction): AppState {
         tutorStatus: 'error',
         tutorError: action.payload.error,
         tutorActionRequests: updatedRequests,
+      };
+    }
+    case 'ocr/requestStarted': {
+      const newSnapshot: CanvasSnapshotEvent = {
+        id: action.payload.snapshotId,
+        timestamp: nowTimeLabel(),
+        label: 'Analyzing strokes...',
+        strokeCount: action.payload.strokeCount,
+        status: 'processing',
+      };
+      return {
+        ...state,
+        ocrStatus: 'loading',
+        ocrError: undefined,
+        ocrActiveRequest: { requestId: action.payload.requestId, snapshotId: action.payload.snapshotId },
+        canvasSnapshotEvents: [...state.canvasSnapshotEvents, newSnapshot],
+      };
+    }
+    case 'ocr/requestSucceeded': {
+      return {
+        ...state,
+        ocrStatus: 'success',
+        latestOcrParse: action.payload.parse,
+        canvasSnapshotEvents: state.canvasSnapshotEvents.map((ev) =>
+          ev.id === action.payload.parse.sourceSnapshotId ? { ...ev, status: 'parsed', label: 'OCR success' } : ev,
+        ),
+      };
+    }
+    case 'ocr/requestFailed': {
+      return {
+        ...state,
+        ocrStatus: 'error',
+        ocrError: action.payload.error,
+      };
+    }
+    case 'ocr/confirmedExpressionSet': {
+      return {
+        ...state,
+        confirmedExpression: action.payload,
       };
     }
     default:
