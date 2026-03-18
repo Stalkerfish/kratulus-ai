@@ -86,26 +86,18 @@ function tutorActionCopy(type: TutorActionRequest['type']) {
 }
 
 async function invokeTutorClient(payload: TutorRequestPayload): Promise<TutorResponsePayload> {
-  await new Promise((resolve) => window.setTimeout(resolve, 300));
+  const response = await fetch('/api/tutor/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 
-  if (!payload.confirmedExpressionLatex) {
-    throw new Error('Missing confirmed expression.');
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || `Tutor request failed (${response.status})`);
   }
 
-  const content = payload.requestedAction
-    ? tutorActionCopy(payload.requestedAction)
-    : `Given ${payload.confirmedExpressionLatex}, focus on ${
-        payload.conversation[payload.conversation.length - 1]?.content ?? 'the next simplification step'
-      }.`;
-
-  return {
-    message: {
-      id: `msg_${crypto.randomUUID()}`,
-      role: 'tutor',
-      content,
-      createdAt: nowTimeLabel(),
-    },
-  };
+  return response.json();
 }
 
 function appReducer(state: AppState, action: AppAction): AppState {

@@ -37,6 +37,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
   const [isReplayActive, setIsReplayActive] = useState(false);
   const [replaySpeed, setReplaySpeed] = useState(initialSession?.replaySpeed ?? 1);
   const [replayProgress, setReplayProgress] = useState(0);
+  const [preferredEngine, setPreferredEngine] = useState<OcrRequestPayload['inkModel']>('pix2text');
 
   const activeStrokeIdRef = useRef<string | null>(null);
   const snapshotTimerRef = useRef<number | null>(null);
@@ -71,10 +72,12 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
           snapshotId: `snap_${crypto.randomUUID()}`,
           strokeCount: strokes.length,
           strokes,
-          inkModel: 'mathpix',
-          canvasSize: {
+          inkModel: preferredEngine,
+          canvasMeta: {
             width: Math.round(stageBounds?.width ?? 0),
             height: Math.round(stageBounds?.height ?? 0),
+            xDPI: window.devicePixelRatio * 96,
+            yDPI: window.devicePixelRatio * 96,
           },
           sessionId: initialSession?.id ?? 'live-session',
           latestStrokeAt,
@@ -102,7 +105,8 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
             },
           });
         }
-      }, delayMs);
+        // Increasing delay to reduce quota usage
+      }, trigger === 'stroke-complete' ? 3000 : 5000);
     },
     [dispatch, initialSession?.id, strokes],
   );
@@ -337,7 +341,7 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
         return nextStrokes;
       });
 
-      scheduleSnapshot('inactivity', 1200);
+      // REMOVED: inactive triggers during pointermove to save quota
     };
 
     const handlePointerUp = (event: PointerEvent) => finalizeStroke(event.pointerId);
@@ -499,6 +503,23 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
               />
             ))}
           </div>
+          <div className="flex items-center gap-1 ml-2 pl-4 border-l border-slate-200 dark:border-primary/20">
+            <span className="text-[9px] font-mono text-slate-400 uppercase mr-1">Engine</span>
+            <button
+              type="button"
+              onClick={() => setPreferredEngine('pix2text')}
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors ${preferredEngine === 'pix2text' ? 'bg-secondary text-white' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-primary/5'}`}
+            >
+              LOCAL
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreferredEngine('myscript')}
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors ${preferredEngine === 'myscript' ? 'bg-primary text-white' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-primary/5'}`}
+            >
+              CLOUD
+            </button>
+          </div>
         </div>
 
         <div className="absolute top-4 right-6 flex items-center gap-2 z-10">
@@ -514,18 +535,17 @@ export default function CanvasWorkspace({ initialSession }: CanvasWorkspaceProps
 
         <canvas ref={canvasRef} className="absolute inset-0 touch-none" />
 
-        <div className="absolute inset-0 p-20 flex flex-col items-center justify-center opacity-80 pointer-events-none">
-          <div className="max-w-md space-y-8">
-            <div className="text-4xl font-display text-slate-800 dark:text-slate-200 italic opacity-60">
-              {latestSnapshot?.label ?? 'Waiting for canvas input...'}
+        <div className="absolute bottom-20 left-10 pointer-events-none transition-all duration-300">
+          <div className="max-w-xs space-y-4">
+            <div className="text-xl font-display text-slate-400 dark:text-slate-500 italic opacity-60">
+              {latestSnapshot?.label ?? 'Drafting...'}
             </div>
-            <div className="text-3xl font-display text-primary italic border-l-4 border-primary/40 pl-6 py-2">
-              {sessionExpression?.latex ?? 'No confirmed expression yet'}
+            <div className="text-lg font-display text-primary italic border-l-2 border-primary/40 pl-4 py-1">
+              {sessionExpression?.latex ?? 'No confirmed expression'}
             </div>
-            <div className="text-xs font-mono uppercase text-slate-500 dark:text-slate-400 tracking-widest">
+            <div className="text-[10px] font-mono uppercase text-slate-500 dark:text-slate-600 tracking-widest">
               OCR {ocrStatus}
               {latestOcrParse ? ` • Confidence ${(latestOcrParse.confidence * 100).toFixed(1)}%` : ''}
-              {ocrError ? ` • ${ocrError}` : ''}
             </div>
           </div>
         </div>

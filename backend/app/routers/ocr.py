@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from statistics import mean
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
-from app.services.mathpix_service import MathpixService
-from app.services.sympy_pipeline import parse_corrected_latex, LatexParseError
+from app.models.ocr import MATH_NODE_REVIEW_THRESHOLD
+from app.services.base import OCREngineName
+from app.services.ocr_service import OCRService
+from app.services.sympy_pipeline import LatexParseError, parse_corrected_latex
 
 router = APIRouter(prefix="/ocr", tags=["ocr"])
-mathpix_service = MathpixService()
+ocr_service = OCRService()
 
 
 class Stroke(BaseModel):
@@ -25,25 +26,34 @@ class Stroke(BaseModel):
         return self
 
 
+class CanvasMeta(BaseModel):
+    width: float | None = None
+    height: float | None = None
+    xDPI: float = 96.0
+    yDPI: float = 96.0
+
+
 class ProcessInkRequest(BaseModel):
     strokes: list[Stroke] = Field(default_factory=list, min_length=1)
-    image_snapshot: str | None = Field(
-        default=None,
-        description="Optional base64-encoded image snapshot of the ink canvas.",
-    )
+    canvas_meta: CanvasMeta = Field(default_factory=CanvasMeta)
+    preferred_engine: OCREngineName = OCREngineName.myscript
 
 
-class MathpixNormalizedOutput(BaseModel):
+class OCRNormalizedOutput(BaseModel):
+    engine: OCREngineName
     latex_styled: str | None = None
     latex_simplified: str | None = None
     text: str | None = None
     confidence: float | None = None
+    requires_review: bool = False
     detection_map: dict[str, Any] = Field(default_factory=dict)
 
 
 class ParsedAstNode(BaseModel):
     type: str
     value: str | None = None
+    confidence: float = 1.0
+    requires_review: bool = False
     children: list["ParsedAstNode"] = Field(default_factory=list)
 
 
@@ -51,11 +61,13 @@ class ConfidenceAwareMathNode(BaseModel):
     node_id: str
     symbol: str
     confidence: float = Field(ge=0.0, le=1.0)
-    source: str = "stroke"
+    source: str = "ocr"
+    requires_review: bool = False
 
 
 class ProcessInkResponse(BaseModel):
-    mathpix: MathpixNormalizedOutput
+    ocr: OCRNormalizedOutput
+    mathpix: OCRNormalizedOutput | None = Field(default=None, description="Deprecated compatibility mirror of the OCR payload.")
     ast: ParsedAstNode
     confidence_nodes: list[ConfidenceAwareMathNode]
 
@@ -63,77 +75,78 @@ class ProcessInkResponse(BaseModel):
 ParsedAstNode.model_rebuild()
 
 
-def _build_fallback_ast(stroke_count: int, mean_points_per_stroke: float) -> ParsedAstNode:
-    return ParsedAstNode(
-        type="Expression",
-        children=[
-            ParsedAstNode(type="StrokeCount", value=str(stroke_count)),
-            ParsedAstNode(type="AvgPointsPerStroke", value=f"{mean_points_per_stroke:.2f}"),
-        ],
-    )
+def _build_review_ast(reason: str) -> ParsedAstNode:
+    return ParsedAstNode(type="UnparsedExpression", value=reason, confidence=0.0, requires_review=True)
 
 
 def _map_sympy_ast_to_model(ast_dict: dict[str, Any]) -> ParsedAstNode:
-    """Recursively map SymPy AST dictionary entries to ParsedAstNode models."""
     return ParsedAstNode(
         type=ast_dict.get("type", "Unknown"),
-        value=ast_dict.get("str"),
-        children=[_map_sympy_ast_to_model(c) for c in ast_dict.get("children", [])]
+        value=ast_dict.get("value", ast_dict.get("str")),
+        confidence=float(ast_dict.get("confidence", 1.0) or 0.0),
+        requires_review=bool(ast_dict.get("requires_review", False)),
+        children=[_map_sympy_ast_to_model(c) for c in ast_dict.get("children", [])],
     )
 
 
 @router.post("/process-ink", response_model=ProcessInkResponse)
 async def process_ink(payload: ProcessInkRequest) -> ProcessInkResponse:
-    # 1. Stroke Analysis for fallback/metadata
-    point_counts = [len(stroke.x) for stroke in payload.strokes]
-    stroke_count = len(payload.strokes)
-    avg_points = mean(point_counts) if point_counts else 0
+    strokes_payload = [s.model_dump() for s in payload.strokes]
 
-    # 2. Call Mathpix Recognition
     try:
-        strokes_payload = [s.model_dump() for s in payload.strokes]
-        data = await mathpix_service.recognize_strokes(strokes_payload, payload.image_snapshot)
+        result = await ocr_service.recognize(
+            strokes=strokes_payload,
+            canvas_meta=payload.canvas_meta.model_dump(exclude_none=True),
+            preferred_engine=payload.preferred_engine,
+        )
     except HTTPException:
         raise
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"OCR service error: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"OCR service error: {exc}") from exc
 
-    # 3. Map Mathpix Output
-    latex_styled = data.get("latex_styled", "")
-    mathpix_output = MathpixNormalizedOutput(
-        latex_styled=latex_styled,
-        latex_simplified=data.get("latex", ""),
-        text=data.get("text", ""),
-        confidence=data.get("confidence", 0.0),
+    review_required = result.confidence < MATH_NODE_REVIEW_THRESHOLD
+    ocr_output = OCRNormalizedOutput(
+        engine=result.engine,
+        latex_styled=result.latex_styled,
+        latex_simplified=result.latex_simplified,
+        text=result.text,
+        confidence=result.confidence,
+        requires_review=review_required,
         detection_map={
-            "strokes": stroke_count,
-            "mathpix_id": data.get("id"),
+            "stroke_count": len(payload.strokes),
+            "raw_engine": result.engine,
+            **result.metadata,
         },
     )
 
-    # 4. Attempt to generate AST via SymPy
     try:
-        if latex_styled:
-            _, sympy_ast, _ = parse_corrected_latex(latex_styled)
+        if result.latex_styled:
+            _, sympy_ast, math_nodes = parse_corrected_latex(result.latex_styled, default_confidence=result.confidence)
             ast_result = _map_sympy_ast_to_model(sympy_ast)
         else:
-            ast_result = _build_fallback_ast(stroke_count, avg_points)
-    except (LatexParseError, Exception):
-        ast_result = _build_fallback_ast(stroke_count, avg_points)
+            ast_result = _build_review_ast("OCR returned an empty expression.")
+            math_nodes = []
+    except LatexParseError:
+        ast_result = _build_review_ast(result.latex_styled or "Unable to parse OCR output.")
+        math_nodes = []
 
-    # 5. Build individual node confidence (simulated from regions if available, or stroke-based)
-    # For now, keeping the stroke-based simulation as a primary feedback loop
     confidence_nodes = [
         ConfidenceAwareMathNode(
-            node_id=f"stroke-{idx}",
-            symbol="stroke",
-            confidence=max(0.05, min(0.99, len(stroke.x) / 40.0)),
+            node_id=f"node-{idx}",
+            symbol=node.get("value", ""),
+            confidence=float(node.get("confidence", 0.0) or 0.0),
+            source=result.engine.value,
+            requires_review=bool(node.get("requires_review", False)),
         )
-        for idx, stroke in enumerate(payload.strokes)
+        for idx, node in enumerate(math_nodes)
+    ] or [
+        ConfidenceAwareMathNode(
+            node_id="node-0",
+            symbol=result.latex_styled or "<empty>",
+            confidence=result.confidence,
+            source=result.engine.value,
+            requires_review=review_required,
+        )
     ]
 
-    return ProcessInkResponse(
-        mathpix=mathpix_output,
-        ast=ast_result,
-        confidence_nodes=confidence_nodes,
-    )
+    return ProcessInkResponse(ocr=ocr_output, mathpix=ocr_output, ast=ast_result, confidence_nodes=confidence_nodes)

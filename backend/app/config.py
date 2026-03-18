@@ -7,18 +7,15 @@ import os
 
 @dataclass(frozen=True)
 class Settings:
-    """Application configuration loaded from environment variables.
-
-    Defaults are safe for local startup when env vars are not present.
-    """
+    """Application configuration loaded from environment variables."""
 
     app_name: str = "Kratulus OCR Backend"
     app_version: str = "0.1.0"
     environment: str = "development"
-    ocr_provider: str = "mathpix"
-    mathpix_api_url: str = "https://api.mathpix.com/v3/text"
-    mathpix_app_id: str | None = None
-    mathpix_app_key: str | None = None
+    ocr_provider: str = "myscript"
+    myscript_api_url: str = "https://cloud.myscript.com/api/v4.0/iink/batch"
+    myscript_application_key: str | None = None
+    myscript_hmac_key: str | None = None
 
 
 @lru_cache(maxsize=1)
@@ -28,7 +25,7 @@ def get_settings() -> Settings:
         app_version=os.getenv("APP_VERSION", Settings.app_version),
         environment=os.getenv("ENVIRONMENT", Settings.environment),
         ocr_provider=os.getenv("OCR_PROVIDER", Settings.ocr_provider),
-        mathpix_api_url=os.getenv("MATHPIX_API_URL", Settings.mathpix_api_url),
-        mathpix_app_id=os.getenv("MATHPIX_APP_ID") or None,
-        mathpix_app_key=os.getenv("MATHPIX_APP_KEY") or None,
+        myscript_api_url=os.getenv("MYSCRIPT_API_URL", Settings.myscript_api_url),
+        myscript_application_key=os.getenv("MYSCRIPT_APPLICATION_KEY") or None,
+        myscript_hmac_key=os.getenv("MYSCRIPT_HMAC_KEY") or None,
     )

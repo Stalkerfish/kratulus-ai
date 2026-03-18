@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from app.api.process_ink import router as process_ink_router
 from app.config import get_settings
 from app.routers.ocr import router as ocr_router
+from app.routers.tutor import router as tutor_router
 
 
 load_dotenv()
@@ -25,3 +26,4 @@ def health() -> dict[str, str]:
 
 app.include_router(ocr_router, prefix="/api")
 app.include_router(process_ink_router, prefix="/api")
+app.include_router(tutor_router, prefix="/api")

@@ -2,3 +2,6 @@ fastapi[standard]
 pydantic
 httpx
 sympy
+latex2sympy2
+pillow
+pix2text

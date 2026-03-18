@@ -13,6 +13,7 @@ export interface OcrParseResult {
   plainText: string;
   confidence: number;
   sourceSnapshotId: string;
+  engine: 'myscript' | 'pix2text' | 'mathpix';
   updatedAt: string;
 }
 
@@ -45,10 +46,12 @@ export interface OcrRequestPayload {
   snapshotId: string;
   strokeCount: number;
   strokes: StrokeEvent[];
-  inkModel: string;
-  canvasSize: {
+  inkModel: 'mathpix' | 'myscript' | 'pix2text';
+  canvasMeta: {
     width: number;
     height: number;
+    xDPI: number;
+    yDPI: number;
   };
   sessionId: string;
   latestStrokeAt: number | null;

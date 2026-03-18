@@ -7,7 +7,15 @@ interface ProcessInkStroke {
 }
 
 interface ProcessInkResponse {
+  ocr?: {
+    engine: string;
+    latex_styled?: string;
+    latex_simplified?: string;
+    text?: string;
+    confidence?: number;
+  };
   mathpix?: {
+    engine?: string;
     latex_styled?: string;
     latex_simplified?: string;
     text?: string;
@@ -46,6 +54,8 @@ export async function requestOcrParse(payload: OcrRequestPayload): Promise<OcrPa
     },
     body: JSON.stringify({
       strokes: payload.strokes.map((stroke) => mapStrokeToProcessInkStroke(stroke.points)),
+      canvas_meta: payload.canvasMeta,
+      preferred_engine: payload.inkModel,
     }),
   });
 
@@ -54,12 +64,14 @@ export async function requestOcrParse(payload: OcrRequestPayload): Promise<OcrPa
   }
 
   const data = (await response.json()) as ProcessInkResponse;
+  const ocr = data.ocr || data.mathpix;
 
   return {
-    latex: data.mathpix?.latex_styled ?? data.mathpix?.latex_simplified ?? '',
-    plainText: data.mathpix?.text ?? '',
-    confidence: data.mathpix?.confidence ?? 0,
+    latex: ocr?.latex_styled ?? ocr?.latex_simplified ?? '',
+    plainText: ocr?.text ?? '',
+    confidence: ocr?.confidence ?? 0,
     sourceSnapshotId: payload.snapshotId,
+    engine: (ocr?.engine as any) || payload.inkModel,
     updatedAt: nowStamp(),
   };
 }

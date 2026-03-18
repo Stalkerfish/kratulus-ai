@@ -1,31 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Mapping
-
 from fastapi import APIRouter, HTTPException, status
 
 from app.models.correction import CorrectionRecord, CorrectionResult, CorrectionUpdate
-from app.models.ocr import ProcessInkResponse, map_mathpix_confidence_to_nodes
 from app.services.correction_store import correction_store
 from app.services.sympy_pipeline import LatexParseError, parse_corrected_latex
 
 router = APIRouter(prefix="/process-ink", tags=["process-ink"])
-
-
-def build_process_ink_response(mathpix_payload: Mapping[str, Any]) -> ProcessInkResponse:
-    latex = str(
-        mathpix_payload.get("latex_styled")
-        or mathpix_payload.get("latex_normal")
-        or mathpix_payload.get("latex")
-        or ""
-    )
-    confidence = float(mathpix_payload.get("confidence", 0.0) or 0.0)
-
-    return ProcessInkResponse(
-        latex=latex,
-        confidence=confidence,
-        math_nodes=map_mathpix_confidence_to_nodes(mathpix_payload, fallback_latex=latex),
-    )
 
 
 @router.post("/correction", response_model=CorrectionResult)
