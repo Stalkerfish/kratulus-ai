@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 import asyncio
+import json
 import logging
 import math
 from threading import Lock
@@ -49,13 +50,17 @@ class Pix2TextEngine(OCREngine):
 
         latex = self._extract_latex(result)
         confidence = self._extract_confidence(result)
+        
+        # Sanitize result to ensure JSON serializability (handle potential numpy types from Pix2Text)
+        sanitized_response = json.loads(json.dumps(result, default=str)) if result else {}
+
         return OCRResult(
             engine=self.engine_name,
             latex_styled=latex,
             latex_simplified=latex,
             text=latex,
             confidence=confidence,
-            raw_response=result if isinstance(result, dict) else {"result": result},
+            raw_response=sanitized_response if isinstance(sanitized_response, dict) else {"results": sanitized_response},
             tokens=[OCRToken(value=latex or "<empty>", confidence=confidence, source="pix2text")],
             metadata={"render_dpi": _TARGET_DPI, "symbol_hint": _SYMBOL_HINTS},
         )
